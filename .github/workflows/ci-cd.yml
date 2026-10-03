@@ -1,0 +1,119 @@
+name: CI and deployment
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  # Let a running deployment finish; cancel superseded PR checks only.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      VITE_CONVEX_URL: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check Convex types
+        run: npx tsc --project convex/tsconfig.json --noEmit
+      - name: Test backend rules
+        run: npm test
+      - name: Build production frontend
+        run: npm run build
+        env:
+          VITE_CONVEX_URL: https://oceanic-crab-449.convex.cloud
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test desktop and mobile flows
+        run: npm run test:e2e
+      - name: Save browser test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-test-reports
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  deploy:
+    name: Deploy
+    if: ${{ github.event_name == 'push' }}
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+      url: ${{ github.ref_name == 'main' && 'https://inscripciones-manos.pages.dev' || 'https://dev.inscripciones-manos.pages.dev' }}
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate deployment configuration
+        shell: bash
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo '::error::Missing CLOUDFLARE_API_TOKEN repository secret'; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo '::error::Missing CLOUDFLARE_ACCOUNT_ID repository variable'; exit 1; }
+          case "$GITHUB_REF_NAME" in
+            main) expected_key_prefix='prod:oceanic-crab-449|' ;;
+            dev) expected_key_prefix='dev:animated-lemming-207|' ;;
+            *) echo '::error::Unexpected deployment branch'; exit 1 ;;
+          esac
+          if [[ "$CONVEX_DEPLOY_KEY" != "$expected_key_prefix"* ]]; then
+            echo '::error::CONVEX_DEPLOY_KEY must match the configured deployment for this branch. Check the GitHub environment secret.'
+            exit 1
+          fi
+      - name: Install dependencies
+        run: npm ci
+      - name: Deploy production backend and build frontend
+        if: ${{ github.ref_name == 'main' }}
+        run: npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name VITE_CONVEX_URL
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - name: Deploy development backend
+        if: ${{ github.ref_name == 'dev' }}
+        run: npx convex dev --once
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - name: Build development frontend
+        if: ${{ github.ref_name == 'dev' }}
+        run: npm run build
+        env:
+          VITE_CONVEX_URL: https://animated-lemming-207.convex.cloud
+      - name: Publish frontend to Cloudflare Pages
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name inscripciones-manos --branch ${{ github.ref_name }}
