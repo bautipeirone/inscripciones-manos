@@ -6,14 +6,18 @@ import { Brand, Modal } from './ui';
 // Authentication links are limited to the private admin area.
 export function SiteHeader({ children }: { children?: ReactNode }) {
   return (
-    <header className="site-header">
-      <div className="container header-inner">
+    <>
+      <header className="site-header">
+        <div className="container header-inner">
+          <nav aria-label="Navegación principal">
+            {children ?? <a href="/">Inicio</a>}
+          </nav>
+        </div>
+      </header>
+      <div className="container site-branding">
         <Brand />
-        <nav aria-label="Navegación principal">
-          {children ?? <a href="/">Inicio</a>}
-        </nav>
       </div>
-    </header>
+    </>
   );
 }
 

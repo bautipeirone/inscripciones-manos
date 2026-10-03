@@ -116,28 +116,25 @@ a:focus-visible {
 .header-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 24px;
   padding-block: 16px;
-  min-height: 80px;
+  min-height: 56px;
+}
+.site-branding {
+  display: flex;
+  justify-content: center;
+  padding-top: 32px;
+  background: #fff;
 }
 .brand {
   display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--brand-950);
 }
 .brand:hover {
   text-decoration: none;
 }
 .brand img {
   display: block;
-  flex-shrink: 0;
-}
-.brand span {
-  font-family: var(--font-heading);
-  font-size: 18px;
-  font-weight: 700;
 }
 .site-header nav {
   display: flex;
@@ -1085,11 +1082,8 @@ tr:last-child td {
     gap: 12px;
     font-size: 12px;
   }
-  .brand {
-    gap: 8px;
-  }
-  .brand span {
-    font-size: 18px;
+  .site-branding {
+    padding-top: 24px;
   }
   .page-section,
   .admin-main {
@@ -1178,13 +1172,6 @@ tr:last-child td {
   }
 }
 @media (max-width: 359px) {
-  .brand span {
-    font-size: 16px;
-  }
-  .brand img {
-    width: 40px;
-    height: 40px;
-  }
   .site-header nav {
     gap: 8px;
     font-size: 11px;

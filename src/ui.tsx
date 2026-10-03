@@ -15,10 +15,9 @@ export function Brand() {
       <img
         src="/logo.svg"
         alt="Manos a la Obra Rosario"
-        width="48"
-        height="48"
+        width="360"
+        height="360"
       />
-      <span>Manos a la Obra</span>
     </a>
   );
 }
