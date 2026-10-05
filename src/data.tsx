@@ -12,6 +12,11 @@ import type { Id } from '../convex/_generated/dataModel';
 import type { Doc } from '../convex/_generated/dataModel';
 import type { PaginationResult } from 'convex/server';
 import {
+  prepareInventory,
+  type Inventory,
+  type InventoryInput,
+} from './inventory';
+import {
   normalizeEmail,
   validateEvent,
   validateRegistration,
@@ -37,6 +42,9 @@ type Data = {
   register: (input: RegistrationInput) => Promise<void>;
   registrations: (eventId: string) => Promise<Registration[]>;
   removeRegistration: (id: string) => Promise<void>;
+  inventories: Inventory[] | undefined;
+  saveInventory: (inventory: InventoryInput, id?: string) => Promise<void>;
+  removeInventory: (id: string) => Promise<void>;
 };
 const Context = createContext<Data | null>(null);
 export function useData() {
@@ -49,11 +57,14 @@ export function LiveData({ children }: { children: ReactNode }) {
   const viewer = useQuery(api.admin.viewer, isAuthenticated ? {} : 'skip');
   const publicEvents = useQuery(api.events.listPublic);
   const adminEvents = useQuery(api.events.listAdmin, viewer ? {} : 'skip');
+  const inventories = useQuery(api.inventories.listAdmin, viewer ? {} : 'skip');
   const auth = useAuthActions();
   const save = useMutation(api.events.save);
   const update = useMutation(api.events.setAvailability);
   const submit = useMutation(api.registrations.submit);
   const remove = useMutation(api.registrations.remove);
+  const saveInventory = useMutation(api.inventories.save);
+  const removeInventory = useMutation(api.inventories.remove);
   const convex = useConvex();
   return (
     <Context.Provider
@@ -65,6 +76,16 @@ export function LiveData({ children }: { children: ReactNode }) {
           (isAuthenticated && viewer === undefined),
         events: adminEvents ?? publicEvents ?? [],
         admin: viewer ?? null,
+        inventories,
+        saveInventory: async (inventory, id) => {
+          await saveInventory({
+            inventory,
+            ...(id ? { id: id as Id<'inventories'> } : {}),
+          });
+        },
+        removeInventory: async (id) => {
+          await removeInventory({ id: id as Id<'inventories'> });
+        },
         signIn: async (email, password) => {
           await auth.signIn('password', { email, password, flow: 'signIn' });
         },
@@ -171,19 +192,26 @@ function seedEvents(): Event[] {
   ];
 }
 const STORAGE = 'manos-demo-v1';
-type DemoState = { events: Event[]; registrations: Registration[] };
+type DemoState = {
+  events: Event[];
+  registrations: Registration[];
+  inventories: Inventory[];
+};
 function readDemo(): DemoState {
   try {
     const raw = localStorage.getItem(STORAGE);
     if (raw) {
       const data = JSON.parse(raw);
       if (Array.isArray(data.events) && Array.isArray(data.registrations))
-        return data;
+        return {
+          ...data,
+          inventories: Array.isArray(data.inventories) ? data.inventories : [],
+        };
     }
   } catch {
     /* Storage can be unavailable in private browsers. */
   }
-  return { events: seedEvents(), registrations: [] };
+  return { events: seedEvents(), registrations: [], inventories: [] };
 }
 // Used only in development. This is never authentication.
 export function DemoData({ children }: { children: ReactNode }) {
@@ -203,6 +231,28 @@ export function DemoData({ children }: { children: ReactNode }) {
         loading: false,
         admin,
         events: data.events,
+        inventories: admin ? data.inventories : undefined,
+        saveInventory: async (inventory, id) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          if (id && !data.inventories.some((item) => item._id === id))
+            throw new Error('No encontramos el inventario.');
+          const value = prepareInventory(inventory);
+          setData((old) => ({
+            ...old,
+            inventories: id
+              ? old.inventories.map((item) =>
+                  item._id === id ? { ...item, ...value } : item,
+                )
+              : [...old.inventories, { ...value, _id: crypto.randomUUID() }],
+          }));
+        },
+        removeInventory: async (id) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          setData((old) => ({
+            ...old,
+            inventories: old.inventories.filter((item) => item._id !== id),
+          }));
+        },
         signIn: async () => {
           setAdmin({ name: 'Equipo Manos', email: 'demo@manos.local' });
         },
@@ -254,6 +304,7 @@ export function DemoData({ children }: { children: ReactNode }) {
             )
               return old;
             return {
+              ...old,
               events: old.events.map((e) =>
                 e._id === input.eventId
                   ? { ...e, registrationCount: e.registrationCount + 1 }
@@ -284,6 +335,7 @@ export function DemoData({ children }: { children: ReactNode }) {
             const row = old.registrations.find((r) => r._id === id);
             if (!row) return old;
             return {
+              ...old,
               registrations: old.registrations.filter((r) => r._id !== id),
               events: old.events.map((e) =>
                 e._id === row.eventId

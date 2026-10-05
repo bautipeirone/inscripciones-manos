@@ -24,9 +24,22 @@ export const eventFields = {
   capacity: v.number(),
   questions: v.array(questionValidator),
 };
+export const inventoryFields = {
+  date: v.string(),
+  label: v.string(),
+  entries: v.array(
+    v.object({
+      name: v.string(),
+      quantity: v.number(),
+      unit: v.optional(v.string()),
+      comments: v.optional(v.string()),
+    }),
+  ),
+};
 export default defineSchema({
   ...authTables,
   admins: defineTable({ userId: v.id('users') }).index('by_user', ['userId']),
+  inventories: defineTable(inventoryFields).index('by_date', ['date']),
   events: defineTable({ ...eventFields, registrationCount: v.number() }).index(
     'by_visible',
     ['visible'],

@@ -1191,3 +1191,48 @@ tr:last-child td {
     animation: none !important;
   }
 }
+
+.admin-tabs {
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+.inventory-heading h2 {
+  font-size: 26px;
+}
+.inventory-card h3,
+.inventory-table td {
+  overflow-wrap: anywhere;
+}
+.inventory-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.inventory-entry {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fafb;
+  padding: 12px 16px 0;
+  margin: 0 0 20px;
+  min-width: 0;
+}
+.inventory-entry legend {
+  font-size: 14px;
+  font-weight: 600;
+  padding-inline: 6px;
+}
+.inventory-entry-heading {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.inventory-table {
+  min-width: 500px;
+  table-layout: fixed;
+}
+.inventory-table th:nth-child(2),
+.inventory-table th:nth-child(3) {
+  width: 18%;
+}

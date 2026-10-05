@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useData } from './data';
+import { Inventories } from './Inventories';
 import {
   csvCell,
   formatDate,
@@ -33,6 +34,7 @@ import { SiteHeader, SiteFooter } from './Layout';
 
 export function Admin({ onHome }: { onHome: () => void }) {
   const data = useData();
+  const [tab, setTab] = useState<'activities' | 'inventories'>('activities');
   const [editor, setEditor] = useState<Event | 'new' | null>(null);
   const [view, setView] = useState<Event | null>(null);
   const [search, setSearch] = useState('');
@@ -97,158 +99,231 @@ export function Admin({ onHome }: { onHome: () => void }) {
               Sesión iniciada como <strong>{data.admin.email}</strong>.
             </p>
           </div>
-          <button className="button" onClick={() => setEditor('new')}>
-            <Plus size={18} /> Nueva actividad
+          {tab === 'activities' && (
+            <button className="button" onClick={() => setEditor('new')}>
+              <Plus size={18} /> Nueva actividad
+            </button>
+          )}
+        </div>
+        <div
+          className="filter-tabs admin-tabs"
+          role="tablist"
+          aria-label="Secciones de administración"
+          onKeyDown={(e) => {
+            const tabs = Array.from(
+              e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                '[role="tab"]',
+              ),
+            );
+            const index = tabs.indexOf(e.target as HTMLButtonElement);
+            if (index < 0) return;
+            const next =
+              e.key === 'ArrowRight'
+                ? (index + 1) % tabs.length
+                : e.key === 'ArrowLeft'
+                  ? (index + tabs.length - 1) % tabs.length
+                  : e.key === 'Home'
+                    ? 0
+                    : e.key === 'End'
+                      ? tabs.length - 1
+                      : null;
+            if (next !== null) {
+              e.preventDefault();
+              tabs[next].focus();
+              tabs[next].click();
+            }
+          }}
+        >
+          <button
+            id="activities-tab"
+            role="tab"
+            aria-selected={tab === 'activities'}
+            aria-controls="activities-panel"
+            tabIndex={tab === 'activities' ? 0 : -1}
+            className={tab === 'activities' ? 'active' : ''}
+            onClick={() => setTab('activities')}
+          >
+            Actividades
           </button>
-        </div>
-        <div className="stats-grid">
-          <div>
-            <span>
-              <FileText /> Actividades
-            </span>
-            <strong>{data.events.length}</strong>
-            <small>Visitas diagnósticas y Manos a la Obra</small>
-          </div>
-          <div>
-            <span>
-              <CalendarDays /> Inscripciones abiertas
-            </span>
-            <strong>
-              {data.events.filter((e) => status(e, now) === 'open').length}
-            </strong>
-            <small>Actividades que reciben inscripciones</small>
-          </div>
-          <div>
-            <span>
-              <Users /> Inscripciones recibidas
-            </span>
-            <strong>
-              {data.events.reduce((sum, e) => sum + e.registrationCount, 0)}
-            </strong>
-            <small>Entre todas las actividades</small>
-          </div>
-        </div>
-        <div className="admin-list-heading">
-          <h2>Actividades</h2>
-          <label className="search-field">
-            <Search size={18} />
-            <input
-              aria-label="Buscar actividades"
-              placeholder="Buscar una actividad…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
+          <button
+            id="inventories-tab"
+            role="tab"
+            aria-selected={tab === 'inventories'}
+            aria-controls="inventories-panel"
+            tabIndex={tab === 'inventories' ? 0 : -1}
+            className={tab === 'inventories' ? 'active' : ''}
+            onClick={() => setTab('inventories')}
+          >
+            Inventarios
+          </button>
         </div>
         {error && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
-        <div className="admin-event-list">
-          {events.length === 0 ? (
-            <div className="empty-state">
-              <FileText />
-              <h3>
-                {search
-                  ? 'No encontramos coincidencias.'
-                  : 'No hay actividades creadas todavía.'}
-              </h3>
-              <p>
-                {search
-                  ? 'Probá con otro nombre.'
-                  : 'Creá una actividad y prepará su formulario de inscripción.'}
-              </p>
+        <section
+          id="inventories-panel"
+          role="tabpanel"
+          aria-labelledby="inventories-tab"
+          hidden={tab !== 'inventories'}
+        >
+          {tab === 'inventories' && <Inventories />}
+        </section>
+        <section
+          id="activities-panel"
+          role="tabpanel"
+          aria-labelledby="activities-tab"
+          hidden={tab !== 'activities'}
+        >
+          <div className="stats-grid">
+            <div>
+              <span>
+                <FileText /> Actividades
+              </span>
+              <strong>{data.events.length}</strong>
+              <small>Visitas diagnósticas y Manos a la Obra</small>
             </div>
-          ) : (
-            events.map((event) => (
-              <article key={event._id} className="admin-event">
-                <div className="admin-event-icon">
-                  <CalendarDays />
-                </div>
-                <div className="admin-event-info">
-                  <div className="admin-event-title">
-                    <h3>{event.title}</h3>
-                    <Status event={event} now={now} />
+            <div>
+              <span>
+                <CalendarDays /> Inscripciones abiertas
+              </span>
+              <strong>
+                {data.events.filter((e) => status(e, now) === 'open').length}
+              </strong>
+              <small>Actividades que reciben inscripciones</small>
+            </div>
+            <div>
+              <span>
+                <Users /> Inscripciones recibidas
+              </span>
+              <strong>
+                {data.events.reduce((sum, e) => sum + e.registrationCount, 0)}
+              </strong>
+              <small>Entre todas las actividades</small>
+            </div>
+          </div>
+          <div className="admin-list-heading">
+            <h2>Actividades</h2>
+            <label className="search-field">
+              <Search size={18} />
+              <input
+                aria-label="Buscar actividades"
+                placeholder="Buscar una actividad…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="admin-event-list">
+            {events.length === 0 ? (
+              <div className="empty-state">
+                <FileText />
+                <h3>
+                  {search
+                    ? 'No encontramos coincidencias.'
+                    : 'No hay actividades creadas todavía.'}
+                </h3>
+                <p>
+                  {search
+                    ? 'Probá con otro nombre.'
+                    : 'Creá una actividad y prepará su formulario de inscripción.'}
+                </p>
+              </div>
+            ) : (
+              events.map((event) => (
+                <article key={event._id} className="admin-event">
+                  <div className="admin-event-icon">
+                    <CalendarDays />
                   </div>
-                  <p>
-                    {formatSchedule(event)} <span>·</span>{' '}
-                    {event.kind === 'main'
-                      ? `Manos a la Obra ${event.date.slice(0, 4)}`
-                      : 'Visita diagnóstica'}
-                  </p>
-                  <small>
-                    Cierre: {formatDeadline(event.deadline)} (Argentina){' '}
-                    {event.visible
-                      ? '· Visible en el sitio'
-                      : '· Oculto del sitio'}
-                  </small>
-                </div>
-                <button
-                  className="registration-count"
-                  onClick={() => setView(event)}
-                >
-                  <Users size={17} />
-                  <strong>{event.registrationCount}</strong>
-                  <span>Ver inscripciones</span>
-                </button>
-                <div className="admin-event-actions">
+                  <div className="admin-event-info">
+                    <div className="admin-event-title">
+                      <h3>{event.title}</h3>
+                      <Status event={event} now={now} />
+                    </div>
+                    <p>
+                      {formatSchedule(event)} <span>·</span>{' '}
+                      {event.kind === 'main'
+                        ? `Manos a la Obra ${event.date.slice(0, 4)}`
+                        : 'Visita diagnóstica'}
+                    </p>
+                    <small>
+                      Cierre: {formatDeadline(event.deadline)} (Argentina){' '}
+                      {event.visible
+                        ? '· Visible en el sitio'
+                        : '· Oculto del sitio'}
+                    </small>
+                  </div>
                   <button
-                    className="icon-button"
-                    aria-label={`Editar ${event.title}`}
-                    title="Editar formulario"
-                    onClick={() => setEditor(event)}
+                    className="registration-count"
+                    onClick={() => setView(event)}
                   >
-                    <Settings2 size={18} />
+                    <Users size={17} />
+                    <strong>{event.registrationCount}</strong>
+                    <span>Ver inscripciones</span>
                   </button>
-                  <button
-                    className="icon-button"
-                    disabled={busy === event._id}
-                    title={
-                      event.visible
-                        ? 'Ocultar formulario'
-                        : 'Mostrar formulario'
-                    }
-                    aria-label={`${event.visible ? 'Ocultar' : 'Mostrar'} ${event.title}`}
-                    onClick={() =>
-                      void change(event, !event.visible, event.accepting)
-                    }
-                  >
-                    {event.visible ? <Eye size={18} /> : <EyeOff size={18} />}
-                  </button>
-                  <button
-                    className="icon-button"
-                    disabled={
-                      busy === event._id ||
-                      (!event.accepting && event.deadline <= now)
-                    }
-                    title={
-                      event.accepting
-                        ? 'Cerrar inscripción'
-                        : event.deadline <= now
-                          ? 'Editá la fecha de cierre para reabrir'
-                          : 'Abrir inscripción'
-                    }
-                    aria-label={`${event.accepting ? 'Cerrar inscripción' : 'Abrir inscripción'} ${event.title}`}
-                    onClick={() =>
-                      void change(event, event.visible, !event.accepting)
-                    }
-                  >
-                    {event.accepting ? <Pause size={18} /> : <Play size={18} />}
-                  </button>
-                </div>
-              </article>
-            ))
-          )}
-        </div>
-        <div className="admin-tip">
-          <LockKeyhole size={18} />
-          <p>
-            Las inscripciones se cierran automáticamente al llegar a la fecha
-            límite. Ocultar un formulario también impide recibir nuevas
-            inscripciones.
-          </p>
-        </div>
+                  <div className="admin-event-actions">
+                    <button
+                      className="icon-button"
+                      aria-label={`Editar ${event.title}`}
+                      title="Editar formulario"
+                      onClick={() => setEditor(event)}
+                    >
+                      <Settings2 size={18} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      disabled={busy === event._id}
+                      title={
+                        event.visible
+                          ? 'Ocultar formulario'
+                          : 'Mostrar formulario'
+                      }
+                      aria-label={`${event.visible ? 'Ocultar' : 'Mostrar'} ${event.title}`}
+                      onClick={() =>
+                        void change(event, !event.visible, event.accepting)
+                      }
+                    >
+                      {event.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+                    </button>
+                    <button
+                      className="icon-button"
+                      disabled={
+                        busy === event._id ||
+                        (!event.accepting && event.deadline <= now)
+                      }
+                      title={
+                        event.accepting
+                          ? 'Cerrar inscripción'
+                          : event.deadline <= now
+                            ? 'Editá la fecha de cierre para reabrir'
+                            : 'Abrir inscripción'
+                      }
+                      aria-label={`${event.accepting ? 'Cerrar inscripción' : 'Abrir inscripción'} ${event.title}`}
+                      onClick={() =>
+                        void change(event, event.visible, !event.accepting)
+                      }
+                    >
+                      {event.accepting ? (
+                        <Pause size={18} />
+                      ) : (
+                        <Play size={18} />
+                      )}
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+          <div className="admin-tip">
+            <LockKeyhole size={18} />
+            <p>
+              Las inscripciones se cierran automáticamente al llegar a la fecha
+              límite. Ocultar un formulario también impide recibir nuevas
+              inscripciones.
+            </p>
+          </div>
+        </section>
       </main>
       <SiteFooter />
       {editor && (
