@@ -796,6 +796,7 @@ function RegistrationList({
   const [deleting, setDeleting] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [downloading, setDownloading] = useState(false);
   useEffect(() => {
     let active = true;
     data
@@ -980,6 +981,35 @@ function RegistrationList({
               </div>
             ))}
           </dl>
+          {!!detail.attachments?.length && (
+            <div className="attachment-list">
+              <h4>Documentos adjuntos</h4>
+              <ul>
+                {detail.attachments.map((file, index) => (
+                  <li key={index}>
+                    <button
+                      className="button button-outline button-small"
+                      disabled={downloading || deleting}
+                      onClick={async () => {
+                        setDownloading(true);
+                        setError('');
+                        try {
+                          await data.downloadAttachment(detail, index);
+                        } catch (error) {
+                          setError(errorMessage(error));
+                        } finally {
+                          setDownloading(false);
+                        }
+                      }}
+                    >
+                      <Download size={16} /> Descargar {file.name}
+                    </button>
+                    <small>{(file.size / 1024).toFixed(0)} KB</small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {detail.status === 'pending' && (
             <button
               className="button button-small"
@@ -1009,8 +1039,8 @@ function RegistrationList({
           {confirmDelete ? (
             <div className="notice">
               <p>
-                ¿Eliminar esta inscripción y sus respuestas? Se liberará el
-                lugar y esta acción no se puede deshacer.
+                ¿Eliminar esta inscripción, sus respuestas y documentos? Se
+                liberará el lugar y esta acción no se puede deshacer.
               </p>
               <div className="delete-actions">
                 <button
