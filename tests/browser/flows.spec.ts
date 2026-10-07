@@ -30,7 +30,7 @@ test('public site, custom questions, duplicate prevention, admin review and CSV'
     .getByRole('button', { name: 'Confirmar mi inscripción' })
     .click();
   await expect(dialog.getByText('Tu inscripción fue recibida.')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Listo, nos vemos ahí' }).click();
+  await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
   // Retry in the same browser with normalized casing: still only one record.
   await page.goto('/activities/demo-main');
   await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
@@ -43,7 +43,7 @@ test('public site, custom questions, duplicate prevention, admin review and CSV'
   await dialog
     .getByRole('button', { name: 'Confirmar mi inscripción' })
     .click();
-  await dialog.getByRole('button', { name: 'Listo, nos vemos ahí' }).click();
+  await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
   await page.getByRole('button', { name: /Probar administración/ }).click();
   await expect(
     page.getByRole('heading', { name: 'Ingresar', exact: true }),
@@ -217,4 +217,70 @@ test('old activities keep their date and unavailable routes stay private', async
   await expect(
     page.getByRole('navigation').getByRole('link', { name: 'Ingresar' }),
   ).toHaveCount(0);
+});
+
+test('manual approval can be configured, requested, filtered and accepted with a reserved place', async ({
+  page,
+}) => {
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
+  const activity = page
+    .locator('.admin-event')
+    .filter({ hasText: 'Manos a la Obra 2027' });
+  await activity
+    .getByRole('button', { name: 'Editar Manos a la Obra 2027', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Requerir aprobación manual').check();
+  await dialog.getByRole('button', { name: 'Guardar cambios' }).click();
+  await page.getByRole('button', { name: 'Ver sitio', exact: true }).click();
+  await page.goto('/activities/demo-main');
+  await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
+  await expect(
+    dialog.getByText('Tu solicitud quedará pendiente'),
+  ).toBeVisible();
+  await dialog.getByLabel('Nombre y apellido').fill('Persona pendiente');
+  await dialog.getByLabel('Email *').fill('pendiente@example.com');
+  await dialog
+    .getByLabel('¿Es tu primera experiencia')
+    .selectOption('Sí, es mi primera vez');
+  await dialog.getByLabel('Autorizo al Equipo de Inscripciones').check();
+  await dialog.getByRole('button', { name: 'Enviar mi solicitud' }).click();
+  await expect(
+    dialog.getByText('Las nuevas inscripciones quedan pendientes'),
+  ).toBeVisible();
+  await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
+  await activity.getByRole('button', { name: '1 Ver inscripciones' }).click();
+  await dialog.getByLabel('Estado de inscripción').selectOption('pending');
+  await expect(
+    dialog.getByRole('cell', { name: 'Pendiente', exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByRole('button', { name: 'Ver respuestas de Persona pendiente' })
+    .click();
+  await dialog
+    .getByRole('button', { name: 'Aceptar inscripción', exact: true })
+    .click();
+  await expect(
+    dialog.locator('dd').filter({ hasText: 'Aceptada' }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Aceptar inscripción', exact: true }),
+  ).toHaveCount(0);
+  await dialog.getByLabel('Estado de inscripción').selectOption('accepted');
+  await expect(
+    dialog.getByRole('cell', { name: 'Aceptada', exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(
+    activity.getByRole('button', { name: '1 Ver inscripciones' }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
+  await activity.getByRole('button', { name: '1 Ver inscripciones' }).click();
+  await expect(
+    dialog.getByRole('cell', { name: 'Aceptada', exact: true }),
+  ).toBeVisible();
 });

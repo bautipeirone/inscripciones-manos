@@ -29,30 +29,53 @@ export const submit = mutation({
       )
       .unique();
     // Idempotent success avoids exposing whether a particular email is registered.
-    if (existing) return { received: true };
+    // Report the current activity policy, not a previous participant's status.
+    const result = {
+      received: true,
+      approvalRequired: event.requireApproval === true,
+    };
+    if (existing) return result;
     const { website: _website, ...registration } = args;
     await ctx.db.insert('registrations', {
       ...registration,
       name: args.name.trim(),
       email,
       phone: args.phone.trim(),
+      status: event.requireApproval ? 'pending' : 'accepted',
     });
     // The lookup, insert, and capacity update share one serializable transaction.
     await ctx.db.patch(event._id, {
       registrationCount: event.registrationCount + 1,
     });
-    return { received: true };
+    return result;
+  },
+});
+export const accept = mutation({
+  args: { id: v.id('registrations') },
+  handler: async (ctx, { id }) => {
+    await requireAdmin(ctx);
+    const registration = await ctx.db.get(id);
+    if (!registration) throw new ConvexError('No encontramos la inscripción.');
+    if (registration.status === 'pending')
+      await ctx.db.patch(id, { status: 'accepted' });
   },
 });
 export const list = query({
   args: { eventId: v.id('events'), paginationOpts: paginationOptsValidator },
   handler: async (ctx, { eventId, paginationOpts }) => {
     await requireAdmin(ctx);
-    return await ctx.db
+    const result = await ctx.db
       .query('registrations')
       .withIndex('by_event', (q) => q.eq('eventId', eventId))
       .order('desc')
       .paginate(paginationOpts);
+    return {
+      ...result,
+      page: result.page.map((row) => ({
+        ...row,
+        status: row.status ?? ('accepted' as const),
+      })),
+    };
   },
 });
 export const remove = mutation({

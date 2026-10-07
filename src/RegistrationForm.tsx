@@ -14,6 +14,7 @@ export function RegistrationForm({
   const data = useData();
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [approvalRequired, setApprovalRequired] = useState(false);
   const [error, setError] = useState('');
   return (
     <Modal
@@ -28,9 +29,18 @@ export function RegistrationForm({
             <Check />
           </span>
           <h3>Tu inscripción fue recibida.</h3>
+          {approvalRequired ? (
+            <p className="notice">
+              Las nuevas inscripciones quedan pendientes de aprobación. El
+              equipo debe aceptar una solicitud nueva antes de confirmar la
+              participación.
+            </p>
+          ) : (
+            <p>Las nuevas inscripciones se aceptan automáticamente.</p>
+          )}
           <p>
             Si ya te habías anotado con este email, conservamos tu inscripción
-            original.
+            original y su estado de aprobación.
           </p>
           <div className="registration-summary">
             <strong>{event.title}</strong>
@@ -52,7 +62,7 @@ export function RegistrationForm({
             </p>
           )}
           <button className="button full-width" onClick={onClose}>
-            Listo, nos vemos ahí <Heart size={18} />
+            Listo <Heart size={18} />
           </button>
         </div>
       ) : (
@@ -65,7 +75,7 @@ export function RegistrationForm({
             setError('');
             const form = new FormData(e.currentTarget);
             try {
-              await data.register({
+              const result = await data.register({
                 eventId: event._id,
                 name: String(form.get('name')),
                 email: String(form.get('email')),
@@ -79,6 +89,7 @@ export function RegistrationForm({
                 consent: form.get('consent') === 'on',
                 website: String(form.get('website') ?? ''),
               });
+              setApprovalRequired(result.approvalRequired);
               setDone(true);
             } catch (err) {
               setError(errorMessage(err));
@@ -104,6 +115,11 @@ export function RegistrationForm({
           <p className="muted small">
             Los campos con * son obligatorios. No necesitás crear una cuenta.
           </p>
+          {event.requireApproval && (
+            <p className="notice">
+              Tu solicitud quedará pendiente hasta que el equipo la acepte.
+            </p>
+          )}
           <label>
             Nombre y apellido *
             <input
@@ -194,7 +210,11 @@ export function RegistrationForm({
             className="button full-width"
             disabled={busy || status(event) !== 'open'}
           >
-            {busy ? 'Guardando inscripción…' : 'Confirmar mi inscripción'}
+            {busy
+              ? 'Guardando inscripción…'
+              : event.requireApproval
+                ? 'Enviar mi solicitud'
+                : 'Confirmar mi inscripción'}
             <ArrowRight size={18} />
           </button>
         </form>
