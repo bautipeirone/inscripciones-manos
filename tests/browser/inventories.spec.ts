@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { utils, write } from 'xlsx';
 
 test('inventory creation, optional units, decimals, editing, search, persistence and confirmed deletion', async ({
   page,
@@ -135,6 +136,206 @@ test('inventory creation, optional units, decimals, editing, search, persistence
   ).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('CSV import instructions, invalid rows, preview, cancellation and export round-trip', async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date('2026-09-26T12:00:00-03:00'));
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
+  await page.getByRole('tab', { name: 'Inventarios', exact: true }).click();
+  const importButton = page.getByRole('button', {
+    name: 'Importar inventario',
+    exact: true,
+  });
+  await importButton.click();
+  const dialog = page.getByRole('dialog');
+  await expect(
+    dialog.getByRole('heading', { name: 'Formato requerido' }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText('La primera fila debe tener los encabezados', {
+      exact: false,
+    }),
+  ).toBeVisible();
+  const input = dialog.getByLabel('Archivo CSV o Excel');
+  const save = dialog.getByRole('button', {
+    name: 'Guardar inventario',
+    exact: true,
+  });
+  await expect(save).toBeDisabled();
+  const source =
+    '\uFEFFFecha,Etiqueta,Nombre,Cantidad,Unidad,Comentarios\r\n2026-07-12,Depósito importado,Palas,0,,\r\n2026-07-12,Depósito importado,"Pintura, blanca","2,5",litros,"Lata ""abierta""\nEn el estante"';
+  await input.setInputFiles({
+    name: 'inventario.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(source),
+  });
+  const preview = dialog.getByRole('region', {
+    name: 'Vista previa del inventario',
+  });
+  await expect(
+    preview.getByRole('cell', { name: 'Pintura, blanca', exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByLabel('Etiqueta *', { exact: true })).toHaveValue(
+    'Depósito importado',
+  );
+  await expect(dialog.getByLabel('Fecha del inventario')).toHaveValue(
+    '2026-07-12',
+  );
+  await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await expect(page.locator('.inventory-card')).toHaveCount(0);
+  await expect(importButton).toBeFocused();
+  await importButton.click();
+  await input.setInputFiles({
+    name: 'invalid.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('Nombre,Cantidad\nPalas,3\nPintura,no es un número'),
+  });
+  await expect(dialog.getByRole('alert')).toContainText('Fila 3');
+  await expect(preview).toHaveCount(0);
+  await expect(save).toBeDisabled();
+  await input.setInputFiles({
+    name: 'inventario.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(source),
+  });
+  await expect(
+    preview.getByRole('cell', { name: '2,5', exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await save.click();
+  await expect(dialog).not.toBeVisible();
+  await page
+    .getByRole('button', {
+      name: 'Ver inventario Depósito importado',
+      exact: true,
+    })
+    .click();
+  await expect(
+    dialog.getByRole('cell', { name: '0', exact: true }),
+  ).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await dialog
+    .getByRole('button', { name: 'Exportar CSV', exact: true })
+    .click();
+  const stream = await (await downloadPromise).createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
+  await page.keyboard.press('Escape');
+  await importButton.click();
+  await input.setInputFiles({
+    name: 'exportado.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.concat(chunks),
+  });
+  await expect(
+    preview.getByRole('cell', { name: 'Pintura, blanca', exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByLabel('Etiqueta *', { exact: true })
+    .fill('Copia del depósito');
+  await save.click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator('.inventory-card')).toHaveCount(2);
+  await page.reload();
+  await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
+  await page.getByRole('tab', { name: 'Inventarios', exact: true }).click();
+  await expect(page.locator('.inventory-card')).toHaveCount(2);
+  await page
+    .getByRole('button', {
+      name: 'Ver inventario Copia del depósito',
+      exact: true,
+    })
+    .click();
+  await expect(
+    dialog.getByRole('cell', {
+      name: 'Lata "abierta"\nEn el estante',
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
+for (const bookType of ['xlsx', 'xls'] as const) {
+  test(`imports an actual ${bookType} file and allows completing its date and label`, async ({
+    page,
+  }) => {
+    const book = utils.book_new();
+    utils.book_append_sheet(
+      book,
+      utils.aoa_to_sheet([
+        ['Nombre', 'Cantidad', 'Unidad'],
+        ['Pintura blanca', 2.5, 'litros'],
+        ['Palas', 3],
+      ]),
+      'Inventario',
+    );
+    const buffer = Buffer.from(write(book, { bookType, type: 'array' }));
+    await page.clock.setFixedTime(new Date('2026-09-26T12:00:00-03:00'));
+    await page.goto('/admin');
+    await page
+      .getByRole('button', { name: 'Explorar panel de prueba' })
+      .click();
+    await page.getByRole('tab', { name: 'Inventarios', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Importar inventario', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog');
+    await dialog
+      .getByLabel('Archivo CSV o Excel')
+      .setInputFiles({
+        name: `inventario.${bookType}`,
+        mimeType:
+          bookType === 'xlsx'
+            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            : 'application/vnd.ms-excel',
+        buffer,
+      });
+    const preview = dialog.getByRole('region', {
+      name: 'Vista previa del inventario',
+    });
+    await expect(
+      preview.getByRole('cell', { name: '2,5', exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByLabel('Etiqueta *', { exact: true })).toHaveValue(
+      '',
+    );
+    await expect(dialog.getByLabel('Fecha del inventario')).toHaveValue(
+      '2026-09-26',
+    );
+    await dialog
+      .getByLabel('Etiqueta *', { exact: true })
+      .fill(`Depósito ${bookType}`);
+    await dialog.getByLabel('Fecha del inventario').fill('2026-07-12');
+    await dialog
+      .getByRole('button', { name: 'Guardar inventario', exact: true })
+      .click();
+    await expect(dialog).not.toBeVisible();
+    await page
+      .getByRole('button', {
+        name: `Ver inventario Depósito ${bookType}`,
+        exact: true,
+      })
+      .click();
+    await expect(
+      dialog.getByRole('cell', { name: 'Pintura blanca', exact: true }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('cell', { name: '2,5', exact: true }),
+    ).toBeVisible();
+    await expect(
+      dialog
+        .getByRole('row')
+        .filter({ hasText: 'Palas' })
+        .getByRole('cell', { name: '—', exact: true }),
+    ).toHaveCount(2);
+  });
+}
 
 test('old demo data is preserved and registration changes keep inventories', async ({
   page,

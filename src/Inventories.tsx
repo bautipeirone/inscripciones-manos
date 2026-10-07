@@ -6,11 +6,13 @@ import {
   Plus,
   Search,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { useData } from './data';
 import { csvCell, formatDate } from './domain';
 import { MAX_INVENTORY_ENTRIES, type Inventory } from './inventory';
 import { errorMessage, Modal } from './ui';
+import { InventoryImport } from './InventoryImport';
 
 const quantityFormat = new Intl.NumberFormat('es-AR', {
   maximumFractionDigits: 20,
@@ -21,6 +23,7 @@ export function Inventories() {
   const [search, setSearch] = useState('');
   const [editor, setEditor] = useState<Inventory | 'new' | null>(null);
   const [viewId, setViewId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const view = data.inventories?.find((item) => item._id === viewId);
   const inventories = data.inventories
     ?.filter(
@@ -39,13 +42,22 @@ export function Inventories() {
             fecha.
           </p>
         </div>
-        <button
-          className="button"
-          onClick={() => setEditor('new')}
-          disabled={!data.inventories}
-        >
-          <Plus size={18} /> Nuevo inventario
-        </button>
+        <div className="inventory-heading-actions">
+          <button
+            className="button button-outline"
+            disabled={!data.inventories}
+            onClick={() => setImporting(true)}
+          >
+            <Upload size={18} /> Importar inventario
+          </button>
+          <button
+            className="button"
+            onClick={() => setEditor('new')}
+            disabled={!data.inventories}
+          >
+            <Plus size={18} /> Nuevo inventario
+          </button>
+        </div>
       </div>
       <div className="admin-list-heading">
         <p className="muted">
@@ -117,6 +129,7 @@ export function Inventories() {
       {view && (
         <InventoryDetail inventory={view} onClose={() => setViewId(null)} />
       )}
+      {importing && <InventoryImport onClose={() => setImporting(false)} />}
     </>
   );
 }

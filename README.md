@@ -24,7 +24,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 - `/admin` con cuenta y contraseña. Sin enlace público al panel en producción; cada operación privada verifica además el rol en el servidor.
 - Consulta y búsqueda de participantes, respuestas y exportación CSV protegida contra fórmulas de planillas.
 - Preguntas bloqueadas al recibir la primera inscripción para conservar el significado de las respuestas. El resto del evento se puede editar.
-- Pestaña privada **Inventarios**: registros por fecha y etiqueta, con nombre, cantidad (incluye decimales), unidad de medida y comentarios opcionales por elemento. Permite consultar, buscar, editar y eliminar con confirmación.
+- Pestaña privada **Inventarios**: registros por fecha y etiqueta, con nombre, cantidad (incluye decimales), unidad de medida y comentarios opcionales por elemento. Permite consultar, buscar, editar, exportar CSV, importar CSV o Excel y eliminar con confirmación.
 - Diseño adaptable, formularios etiquetados, ventanas con gestión del foco y cierre con Escape.
 
 Los eventos de ejemplo **no se cargan en Convex**. La base real comienza vacía para que el equipo publique sus fechas, lugares y formularios definitivos.
@@ -48,6 +48,14 @@ En `/admin`, elegí **Inventarios → Nuevo inventario**. Completá la fecha y u
 Cada inventario representa el relevamiento de una fecha; no calcula movimientos de stock entre registros. Podés guardar varias etiquetas en una misma fecha. La lista muestra primero los más recientes y permite buscar por etiqueta o fecha en formato `AAAA-MM-DD`. **Ver inventario** muestra sus elementos y ofrece **Exportar CSV**, que descarga fecha, etiqueta, nombre, cantidad, unidad y comentarios en un archivo `inventario-AAAA-MM-DD.csv`, con protección contra fórmulas de planillas. El botón de edición permite corregir los elementos, agregar o quitarlos. Eliminar requiere confirmación y borra el inventario completo. Solo los administradores pueden acceder a estas operaciones.
 
 Se admiten hasta 500 elementos por inventario, etiquetas y nombres de hasta 120 caracteres, unidades de hasta 40 y comentarios de hasta 2000. Las reglas se validan tanto en Convex como en la demo.
+
+### Importar un inventario
+
+Elegí **Inventarios → Importar inventario**. El menú incluye instrucciones y una tabla de ejemplo. Se admiten archivos CSV en UTF-8 separados por coma o punto y coma, y Excel `.xlsx` o `.xls` (primera hoja). La primera fila debe contener **Nombre** y **Cantidad**; **Unidad** y **Comentarios** son opcionales. Se reconoce cualquier orden de columnas, sin distinguir mayúsculas o tildes. Otras columnas se ignoran.
+
+Cada fila representa un elemento con nombre y cantidad mayor o igual a cero. Se aceptan decimales con punto o coma, sin separadores de miles. En un CSV separado por coma, los decimales con coma y los textos que incluyan comas o saltos de línea deben ir entre comillas dobles. En Excel se requieren valores, sin fórmulas, errores ni celdas combinadas. Los archivos pueden pesar hasta 5 MB; la tabla admite hasta 500 filas después del encabezado.
+
+Podés incluir **Fecha** y **Etiqueta**, repitiendo el mismo valor para todos los elementos, o completar esos datos en el menú. Las fechas se leen como `AAAA-MM-DD` o como celdas de fecha de Excel. El CSV generado por **Exportar CSV** se puede volver a importar. El archivo se procesa en el navegador y se valida completo antes de habilitar el guardado. Revisá la vista previa y presioná **Guardar inventario** para crear un registro nuevo; los inventarios anteriores se conservan. Si una fila es inválida, se muestra un error y no se guarda ningún elemento del archivo.
 
 ## Conectar Convex
 
@@ -195,7 +203,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Las pruebas de backend usan `convex-test` y comprueban permisos, bloqueo del registro de cuentas, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales y unidades opcionales.
+Las pruebas de backend usan `convex-test` y comprueban permisos, bloqueo del registro de cuentas, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales, unidades opcionales e importación de CSV y archivos Excel reales. Las pruebas del lector también cubren fechas, comillas, saltos de línea, límites y rechazo de archivos inválidos.
 
 Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay un backend configurado, ejecutá Vite con `VITE_CONVEX_URL='' npm run dev -- --port 5173` antes de la prueba.
 
@@ -207,6 +215,8 @@ Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay 
 - `src/Admin.tsx`: acceso privado, editor y consulta de participantes.
 - `src/Inventories.tsx`: lista, editor y detalle de inventarios en el panel administrativo.
 - `src/inventory.ts`: tipos y validación compartida de inventarios.
+- `src/InventoryImport.tsx`: menú de importación con instrucciones, selección de archivo y vista previa.
+- `src/inventoryImport.ts`: lectura y validación de CSV y Excel; el lector de Excel se carga al seleccionar ese formato.
 - `src/data.tsx`: conexión con Convex y demo local de desarrollo.
 - `src/domain.ts`: reglas compartidas y normalización.
 - `convex/`: esquema, permisos, autenticación y operaciones de base de datos.
