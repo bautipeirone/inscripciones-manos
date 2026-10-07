@@ -58,6 +58,11 @@ export function SiteFooter() {
               inscribís.
             </p>
             <p>
+              También guardamos los documentos que adjuntás, como comprobantes
+              de pago o transferencia. Solo el equipo puede descargarlos y se
+              eliminan junto con la inscripción.
+            </p>
+            <p>
               Solo el Equipo de Inscripciones puede consultar las inscripciones.
               Usamos tu email para evitar registros duplicados en una misma
               actividad. No mostramos públicamente tus datos.

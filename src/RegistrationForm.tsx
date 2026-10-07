@@ -3,6 +3,7 @@ import { ArrowRight, CalendarDays, MapPin, Check, Heart } from 'lucide-react';
 import { useData } from './data';
 import { formatSchedule, formatDeadline, status, type Event } from './domain';
 import { Modal, errorMessage } from './ui';
+import { ATTACHMENT_ACCEPT, validateAttachments } from './attachments';
 
 export function RegistrationForm({
   event,
@@ -16,6 +17,7 @@ export function RegistrationForm({
   const [done, setDone] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [error, setError] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   return (
     <Modal
       title={
@@ -75,20 +77,23 @@ export function RegistrationForm({
             setError('');
             const form = new FormData(e.currentTarget);
             try {
-              const result = await data.register({
-                eventId: event._id,
-                name: String(form.get('name')),
-                email: String(form.get('email')),
-                phone: String(form.get('phone')),
-                answers: Object.fromEntries(
-                  event.questions.map((q) => [
-                    q.id,
-                    String(form.get(`answer-${q.id}`) ?? ''),
-                  ]),
-                ),
-                consent: form.get('consent') === 'on',
-                website: String(form.get('website') ?? ''),
-              });
+              const result = await data.register(
+                {
+                  eventId: event._id,
+                  name: String(form.get('name')),
+                  email: String(form.get('email')),
+                  phone: String(form.get('phone')),
+                  answers: Object.fromEntries(
+                    event.questions.map((q) => [
+                      q.id,
+                      String(form.get(`answer-${q.id}`) ?? ''),
+                    ]),
+                  ),
+                  consent: form.get('consent') === 'on',
+                  website: String(form.get('website') ?? ''),
+                },
+                files,
+              );
               setApprovalRequired(result.approvalRequired);
               setDone(true);
             } catch (err) {
@@ -186,6 +191,48 @@ export function RegistrationForm({
               )}
             </label>
           ))}
+          <label>
+            Documentos <span className="optional">(opcional)</span>
+            <input
+              type="file"
+              accept={ATTACHMENT_ACCEPT}
+              multiple
+              disabled={busy}
+              aria-describedby="attachment-help"
+              onChange={(e) => {
+                const selected = Array.from(e.currentTarget.files ?? []);
+                setError('');
+                try {
+                  validateAttachments(
+                    selected.map((file) => ({
+                      name: file.name,
+                      contentType: file.type,
+                      size: file.size,
+                    })),
+                  );
+                  setFiles(selected);
+                } catch (error) {
+                  setFiles([]);
+                  e.currentTarget.value = '';
+                  setError(errorMessage(error));
+                }
+              }}
+            />
+            <small id="attachment-help">
+              Podés adjuntar comprobantes de pago o transferencia. Hasta 3
+              archivos PDF, JPEG o PNG de 5 MB cada uno. Solo el equipo podrá
+              descargarlos.
+            </small>
+          </label>
+          {files.length > 0 && (
+            <ul className="attachment-list">
+              {files.map((file, index) => (
+                <li key={index}>
+                  {file.name} · {(file.size / 1024).toFixed(0)} KB
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="honeypot" aria-hidden="true">
             <label>
               Website

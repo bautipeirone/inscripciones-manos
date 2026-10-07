@@ -284,3 +284,192 @@ test('manual approval can be configured, requested, filtered and accepted with a
     dialog.getByRole('cell', { name: 'Aceptada', exact: true }),
   ).toBeVisible();
 });
+
+test('receipts can be attached, retained across reloads, downloaded by admins and deleted', async ({
+  page,
+}) => {
+  await page.goto('/activities/demo-main');
+  await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Nombre y apellido').fill('Persona con comprobante');
+  await dialog.getByLabel('Email *').fill('comprobante@example.com');
+  await dialog
+    .getByLabel('¿Es tu primera experiencia')
+    .selectOption('Sí, es mi primera vez');
+  await dialog.getByLabel('Autorizo al Equipo de Inscripciones').check();
+  const receipt = {
+    name: 'comprobante.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\nreceipt\n%%EOF'),
+  };
+  const transfer = {
+    name: 'transferencia.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  };
+  await dialog
+    .getByLabel('Documentos (opcional)')
+    .setInputFiles([receipt, transfer]);
+  await expect(
+    dialog.getByText('Hasta 3 archivos PDF', { exact: false }),
+  ).toBeVisible();
+  await dialog
+    .getByRole('button', { name: 'Confirmar mi inscripción' })
+    .click();
+  await expect(dialog.getByText('Tu inscripción fue recibida.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
+  await page.reload();
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
+  await page
+    .locator('.admin-event')
+    .filter({ hasText: 'Manos a la Obra 2027' })
+    .getByRole('button', { name: '1 Ver inscripciones' })
+    .click();
+  await dialog
+    .getByRole('button', { name: 'Ver respuestas de Persona con comprobante' })
+    .click();
+  await expect(
+    dialog.getByRole('heading', { name: 'Documentos adjuntos' }),
+  ).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await dialog
+    .getByRole('button', { name: 'Descargar comprobante.pdf', exact: true })
+    .click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('comprobante.pdf');
+  expect(await download.failure()).toBeNull();
+  await expect(
+    dialog.getByRole('button', {
+      name: 'Descargar transferencia.png',
+      exact: true,
+    }),
+  ).toBeVisible();
+  await dialog
+    .getByRole('button', { name: 'Eliminar inscripción', exact: true })
+    .click();
+  await expect(
+    dialog.getByText('sus respuestas y documentos', { exact: false }),
+  ).toBeVisible();
+  await dialog
+    .getByRole('button', { name: 'Eliminar definitivamente' })
+    .click();
+  await expect(dialog.getByText('Todavía no hay inscripciones.')).toBeVisible();
+  // Verify the storage boundary too: deleting a demo inscription removes its bytes.
+  expect(
+    await page.evaluate(
+      () =>
+        new Promise<number>((resolve, reject) => {
+          const request = indexedDB.open('manos-demo-documents', 1);
+          request.onsuccess = () => {
+            const db = request.result;
+            const count = db
+              .transaction('documents')
+              .objectStore('documents')
+              .count();
+            count.onsuccess = () => {
+              resolve(count.result);
+              db.close();
+            };
+            count.onerror = () => reject(count.error);
+          };
+          request.onerror = () => reject(request.error);
+        }),
+    ),
+  ).toBe(0);
+});
+
+test('document validation keeps the form usable for a corrected upload', async ({
+  page,
+}) => {
+  await page.goto('/activities/demo-main');
+  await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Nombre y apellido').fill('Persona que reintenta');
+  await dialog.getByLabel('Email *').fill('reintento@example.com');
+  await dialog
+    .getByLabel('¿Es tu primera experiencia')
+    .selectOption('Sí, es mi primera vez');
+  await dialog.getByLabel('Autorizo al Equipo de Inscripciones').check();
+  const fileInput = dialog.getByLabel('Documentos (opcional)');
+  await fileInput.setInputFiles({
+    name: 'receipt.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('invalid'),
+  });
+  await expect(dialog.getByRole('alert')).toContainText('PDF');
+  await fileInput.setInputFiles({
+    name: 'receipt.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
+  });
+  await expect(dialog.getByRole('alert')).toContainText('5 MB');
+  const receipt = {
+    name: 'receipt.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\nvalid'),
+  };
+  await fileInput.setInputFiles([receipt, receipt, receipt, receipt]);
+  await expect(dialog.getByRole('alert')).toContainText('hasta 3 documentos');
+  await fileInput.setInputFiles({
+    ...receipt,
+    buffer: Buffer.from('renamed content'),
+  });
+  await dialog
+    .getByRole('button', { name: 'Confirmar mi inscripción' })
+    .click();
+  await expect(dialog.getByRole('alert')).toContainText('contenido');
+  await expect(dialog.getByLabel('Nombre y apellido')).toHaveValue(
+    'Persona que reintenta',
+  );
+  await fileInput.setInputFiles(receipt);
+  await dialog
+    .getByRole('button', { name: 'Confirmar mi inscripción' })
+    .click();
+  await expect(dialog.getByText('Tu inscripción fue recibida.')).toBeVisible();
+});
+
+test('a failed document upload shows an error and can be retried with the same form and files', async ({
+  page,
+}) => {
+  await page.goto('/activities/demo-main');
+  await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog
+    .getByLabel('Nombre y apellido')
+    .fill('Persona que conserva archivos');
+  await dialog.getByLabel('Email *').fill('retry-upload@example.com');
+  await dialog
+    .getByLabel('¿Es tu primera experiencia')
+    .selectOption('Sí, es mi primera vez');
+  await dialog.getByLabel('Autorizo al Equipo de Inscripciones').check();
+  await dialog
+    .getByLabel('Documentos (opcional)')
+    .setInputFiles({
+      name: 'receipt.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\nreceipt'),
+    });
+  // Simulate a failure at the browser storage boundary, then restore service.
+  await page.evaluate(() => {
+    const open = indexedDB.open.bind(indexedDB);
+    let failures = 1;
+    indexedDB.open = (...args: Parameters<IDBFactory['open']>) => {
+      if (failures-- > 0)
+        throw new DOMException('Storage is unavailable', 'QuotaExceededError');
+      return open(...args);
+    };
+  });
+  await dialog
+    .getByRole('button', { name: 'Confirmar mi inscripción' })
+    .click();
+  await expect(dialog.getByRole('alert')).toContainText('documentos de prueba');
+  await expect(dialog.getByLabel('Nombre y apellido')).toHaveValue(
+    'Persona que conserva archivos',
+  );
+  await expect(dialog.getByLabel('Documentos (opcional)')).toBeEnabled();
+  await dialog
+    .getByRole('button', { name: 'Confirmar mi inscripción' })
+    .click();
+  await expect(dialog.getByText('Tu inscripción fue recibida.')).toBeVisible();
+});

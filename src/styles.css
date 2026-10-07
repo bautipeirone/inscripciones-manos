@@ -1256,3 +1256,20 @@ tr:last-child td {
 .inventory-table th:nth-child(3) {
   width: 18%;
 }
+
+.attachment-list {
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+}
+.attachment-list li {
+  margin: 8px 0;
+}
+.attachment-list .button {
+  white-space: normal;
+  text-align: left;
+  max-width: 100%;
+}
+.attachment-list small {
+  display: block;
+  margin-top: 4px;
+}

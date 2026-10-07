@@ -17,6 +17,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 
 - Fechas y horas de inicio y finalización, actividades de varios días e indicaciones para participantes. Se guardan en Convex y se muestran en hora de Argentina.
 - Inscripción sin cuenta, con nombre, email, teléfono opcional y consentimiento.
+- Documentos opcionales en las inscripciones: hasta tres comprobantes PDF, JPEG o PNG de 5 MB cada uno, con descarga privada para administradores y eliminación junto con la inscripción.
 - Aprobación manual opcional por actividad: las nuevas solicitudes quedan pendientes y el administrador puede aceptarlas desde el detalle, filtrarlas por estado y exportar su estado a CSV.
 - Formularios con preguntas cortas, largas o de selección; campos obligatorios configurables.
 - Un registro por email normalizado y evento. Una persona puede participar en varios eventos. Los reintentos no reemplazan respuestas anteriores.
@@ -49,6 +50,16 @@ Al crear o editar una actividad, activá **Requerir aprobación manual** para qu
 En **Ver inscripciones**, usá **Estado de inscripción** para filtrar pendientes o aceptadas. Abrí el detalle de una pendiente y elegí **Aceptar inscripción**. La operación está protegida en el servidor y se puede repetir sin afectar el cupo. La confirmación pública explica cuándo se necesita aprobación y conserva el mensaje de que un reintento no reemplaza la inscripción original. Por privacidad, los reintentos informan la política actual de la actividad y no revelan el estado de una inscripción previa para ese email.
 
 Desplegá el backend antes del frontend. Los campos nuevos de configuración y estado son opcionales para conservar actividades e inscripciones existentes; no requieren migración.
+
+## Adjuntar documentos
+
+El formulario de inscripción permite adjuntar documentos **opcionales en todas las actividades**; no hay requisitos de documentación configurables por actividad. Se aceptan hasta **3 archivos PDF, JPEG o PNG**, de **5 MB por archivo**. Los límites, las extensiones, el tipo declarado y la firma del formato se validan en el servidor. Si falla el envío, el formulario conserva los datos y los archivos para volver a intentar. Un reintento con el mismo email conserva los documentos de la inscripción original.
+
+En **Ver inscripciones**, abrí el detalle y elegí **Descargar** junto a un documento. Cada descarga verifica la sesión y el rol administrativo; no se publican enlaces de almacenamiento ni identificadores de archivos en las consultas. Eliminar una inscripción borra también sus archivos. Los envíos rechazados y los reintentos duplicados limpian los archivos nuevos que llegaron a almacenarse.
+
+Los archivos usan el almacenamiento de Convex. El frontend deriva la URL HTTP `https://<deployment>.convex.site` de `VITE_CONVEX_URL`; para un dominio o backend propio, configurá `VITE_CONVEX_SITE_URL` con la URL HTTP correspondiente. Las rutas `/inscriptions` y `/inscription-document` admiten CORS y descargas autenticadas mediante el token de la sesión. Desplegá el backend antes de publicar el frontend. Referencia: [archivos mediante acciones HTTP de Convex](https://docs.convex.dev/file-storage/serve-files).
+
+En la demo, los documentos se guardan en IndexedDB y sobreviven a una recarga del navegador; las actividades e inscripciones siguen en localStorage. Para reiniciar también los archivos de prueba, eliminá la base IndexedDB `manos-demo-documents`. Usá documentos ficticios.
 
 ## Registrar inventarios
 
@@ -192,7 +203,7 @@ Backend y frontend se publican en pasos separados. Si falla Cloudflare después 
 
 Verificado el 26 de septiembre de 2026: [Convex ofrece un plan Free con recursos limitados](https://www.convex.dev/pricing); su plan **Starter es de pago por uso** por encima de los recursos incluidos. Elegí **Free** para un presupuesto sin cargos por excedentes. [Cloudflare Pages Free admite hasta 500 compilaciones por mes](https://developers.cloudflare.com/pages/platform/limits/).
 
-No se necesita dominio propio, servicio de email, almacenamiento de archivos ni servidor pago. La capacidad gratuita depende del tráfico y del uso: controlá el consumo en Convex. No es una garantía de alojamiento gratis a cualquier escala; si se agota la cuota gratuita, puede limitarse el servicio. Referencia: [límites de Convex](https://docs.convex.dev/production/state/limits).
+No se necesita dominio propio ni servicio de email. Los documentos adjuntos consumen almacenamiento de Convex. La capacidad gratuita depende del tráfico y del uso: controlá el consumo en Convex. No es una garantía de alojamiento gratis a cualquier escala; si se agota la cuota gratuita, puede limitarse el servicio. Referencia: [límites de Convex](https://docs.convex.dev/production/state/limits).
 
 ## Operación y límites del alcance
 
