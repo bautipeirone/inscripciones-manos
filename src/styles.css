@@ -1200,6 +1200,26 @@ tr:last-child td {
 .inventory-heading h2 {
   font-size: 26px;
 }
+.inventory-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.import-instructions h3 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.import-instructions ul {
+  padding-left: 20px;
+  margin-bottom: 16px;
+}
+.import-instructions li + li {
+  margin-top: 8px;
+}
+.import-instructions .table-scroll {
+  background: #fff;
+  margin-bottom: 16px;
+}
 .inventory-card h3,
 .inventory-table td {
   overflow-wrap: anywhere;
