@@ -1,3 +1,4 @@
+import type { Attachment } from './attachments';
 export type Question = {
   id: string;
   label: string;
@@ -36,6 +37,7 @@ export type Registration = RegistrationInput & {
   _id: string;
   _creationTime: number;
   status?: 'pending' | 'accepted';
+  attachments?: Attachment[];
 };
 export type RegistrationResult = {
   received: boolean;
