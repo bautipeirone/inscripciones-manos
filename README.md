@@ -17,6 +17,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 
 - Fechas y horas de inicio y finalización, actividades de varios días e indicaciones para participantes. Se guardan en Convex y se muestran en hora de Argentina.
 - Inscripción sin cuenta, con nombre, email, teléfono opcional y consentimiento.
+- Aprobación manual opcional por actividad: las nuevas solicitudes quedan pendientes y el administrador puede aceptarlas desde el detalle, filtrarlas por estado y exportar su estado a CSV.
 - Formularios con preguntas cortas, largas o de selección; campos obligatorios configurables.
 - Un registro por email normalizado y evento. Una persona puede participar en varios eventos. Los reintentos no reemplazan respuestas anteriores.
 - Visibilidad y recepción de inscripciones independientes. Los formularios ocultos no aparecen en las consultas públicas y rechazan nuevas inscripciones.
@@ -40,6 +41,14 @@ Los nuevos formularios requieren horarios de inicio/finalización e indicaciones
 Después de actualizar el código, ejecutá `npx convex dev` para desarrollo o `npx convex deploy` para producción antes de publicar el frontend, porque el esquema agrega `startAt`, `endAt` e `instructions` como campos opcionales para conservar registros anteriores.
 
 La función de inventarios agrega la tabla `inventories` y las operaciones privadas `inventories:listAdmin`, `inventories:save` e `inventories:remove`. Desplegá también estos cambios de backend antes de publicar el frontend. No requiere migrar actividades ni inscripciones existentes. La demo conserva sus datos anteriores y empieza con una lista de inventarios vacía.
+
+## Aprobar inscripciones
+
+Al crear o editar una actividad, activá **Requerir aprobación manual** para que las nuevas solicitudes queden pendientes. Tanto las pendientes como las aceptadas reservan cupo; aceptar una solicitud no consume un segundo lugar. Eliminar una inscripción libera su lugar. Cambiar la opción afecta solo a las nuevas solicitudes: las pendientes anteriores necesitan aceptación manual y las aceptadas conservan su estado. Las inscripciones anteriores a esta función se consideran aceptadas.
+
+En **Ver inscripciones**, usá **Estado de inscripción** para filtrar pendientes o aceptadas. Abrí el detalle de una pendiente y elegí **Aceptar inscripción**. La operación está protegida en el servidor y se puede repetir sin afectar el cupo. La confirmación pública explica cuándo se necesita aprobación y conserva el mensaje de que un reintento no reemplaza la inscripción original. Por privacidad, los reintentos informan la política actual de la actividad y no revelan el estado de una inscripción previa para ese email.
+
+Desplegá el backend antes del frontend. Los campos nuevos de configuración y estado son opcionales para conservar actividades e inscripciones existentes; no requieren migración.
 
 ## Registrar inventarios
 

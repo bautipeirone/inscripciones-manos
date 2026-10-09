@@ -24,6 +24,7 @@ import {
   type EventInput,
   type Registration,
   type RegistrationInput,
+  type RegistrationResult,
 } from './domain';
 
 type Data = {
@@ -39,9 +40,10 @@ type Data = {
     visible: boolean,
     accepting: boolean,
   ) => Promise<void>;
-  register: (input: RegistrationInput) => Promise<void>;
+  register: (input: RegistrationInput) => Promise<RegistrationResult>;
   registrations: (eventId: string) => Promise<Registration[]>;
   removeRegistration: (id: string) => Promise<void>;
+  acceptRegistration: (id: string) => Promise<void>;
   inventories: Inventory[] | undefined;
   saveInventory: (inventory: InventoryInput, id?: string) => Promise<void>;
   removeInventory: (id: string) => Promise<void>;
@@ -63,6 +65,7 @@ export function LiveData({ children }: { children: ReactNode }) {
   const update = useMutation(api.events.setAvailability);
   const submit = useMutation(api.registrations.submit);
   const remove = useMutation(api.registrations.remove);
+  const accept = useMutation(api.registrations.accept);
   const saveInventory = useMutation(api.inventories.save);
   const removeInventory = useMutation(api.inventories.remove);
   const convex = useConvex();
@@ -97,10 +100,16 @@ export function LiveData({ children }: { children: ReactNode }) {
           await update({ id: event._id as Id<'events'>, visible, accepting });
         },
         register: async (input) => {
-          await submit({ ...input, eventId: input.eventId as Id<'events'> });
+          return await submit({
+            ...input,
+            eventId: input.eventId as Id<'events'>,
+          });
         },
         removeRegistration: async (id) => {
           await remove({ id: id as Id<'registrations'> });
+        },
+        acceptRegistration: async (id) => {
+          await accept({ id: id as Id<'registrations'> });
         },
         registrations: async (eventId) => {
           const rows: Registration[] = [];
@@ -318,16 +327,34 @@ export function DemoData({ children }: { children: ReactNode }) {
                   name: input.name.trim(),
                   _id: crypto.randomUUID(),
                   _creationTime: Date.now(),
+                  status: event.requireApproval ? 'pending' : 'accepted',
                 },
               ],
             };
           });
+          return {
+            received: true,
+            approvalRequired: event.requireApproval === true,
+          };
         },
         registrations: async (eventId) => {
           if (!admin) throw new Error('Acceso no autorizado.');
           return data.registrations
             .filter((r) => r.eventId === eventId)
             .reverse();
+        },
+        acceptRegistration: async (id) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          if (!data.registrations.some((r) => r._id === id))
+            throw new Error('No encontramos la inscripción.');
+          setData((old) => ({
+            ...old,
+            registrations: old.registrations.map((r) =>
+              r._id === id && r.status === 'pending'
+                ? { ...r, status: 'accepted' }
+                : r,
+            ),
+          }));
         },
         removeRegistration: async (id) => {
           if (!admin) throw new Error('Acceso no autorizado.');

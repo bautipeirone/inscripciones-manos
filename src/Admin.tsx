@@ -24,6 +24,7 @@ import {
   formatSchedule,
   formatDeadline,
   status,
+  registrationStatusLabels,
   type Event,
   type EventInput,
   type Question,
@@ -467,6 +468,7 @@ function EventEditor({
             capacity: Number(form.get('capacity')),
             visible: form.get('visible') === 'on',
             accepting: form.get('accepting') === 'on',
+            requireApproval: form.get('requireApproval') === 'on',
             questions,
           };
           try {
@@ -715,6 +717,20 @@ function EventEditor({
         </h3>
         <label className="setting-row">
           <span>
+            <strong>Requerir aprobación manual</strong>
+            <small>
+              Las nuevas solicitudes reservan cupo y quedan pendientes. Cambiar
+              esta opción no modifica las inscripciones recibidas.
+            </small>
+          </span>
+          <input
+            type="checkbox"
+            name="requireApproval"
+            defaultChecked={event?.requireApproval ?? false}
+          />
+        </label>
+        <label className="setting-row">
+          <span>
             <strong>Mostrar en el sitio</strong>
             <small>Las personas podrán encontrar esta actividad.</small>
           </span>
@@ -778,6 +794,8 @@ function RegistrationList({
   const [detail, setDetail] = useState<Registration | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
   useEffect(() => {
     let active = true;
     data
@@ -795,8 +813,10 @@ function RegistrationList({
       active = false;
     };
   }, [event._id]);
-  const filtered = rows.filter((r) =>
-    `${r.name} ${r.email}`.toLowerCase().includes(search.toLowerCase()),
+  const filtered = rows.filter(
+    (r) =>
+      `${r.name} ${r.email}`.toLowerCase().includes(search.toLowerCase()) &&
+      (statusFilter === 'all' || (r.status ?? 'accepted') === statusFilter),
   );
   const download = () => {
     const lines = [
@@ -806,6 +826,7 @@ function RegistrationList({
         'Teléfono',
         'Fecha de inscripción (UTC)',
         'Consentimiento',
+        'Estado',
         ...event.questions.map((q) => q.label),
       ],
       ...rows.map((r) => [
@@ -814,6 +835,7 @@ function RegistrationList({
         r.phone,
         new Date(r._creationTime).toISOString(),
         r.consent ? 'Sí' : 'No',
+        registrationStatusLabels[r.status ?? 'accepted'],
         ...event.questions.map((q) => r.answers[q.id] ?? ''),
       ]),
     ];
@@ -837,6 +859,17 @@ function RegistrationList({
         {event.title} · {formatSchedule(event)}
       </p>
       <div className="registrations-toolbar">
+        <label>
+          Estado de inscripción
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">Todas</option>
+            <option value="pending">Pendientes</option>
+            <option value="accepted">Aceptadas</option>
+          </select>
+        </label>
         <label className="search-field">
           <Search size={18} />
           <input
@@ -880,6 +913,7 @@ function RegistrationList({
                   <th>Nombre</th>
                   <th>Email</th>
                   <th>Fecha</th>
+                  <th>Estado</th>
                   <th>
                     <span className="sr-only">Detalle</span>
                   </th>
@@ -895,6 +929,7 @@ function RegistrationList({
                         timeZone: 'America/Argentina/Buenos_Aires',
                       })}
                     </td>
+                    <td>{registrationStatusLabels[r.status ?? 'accepted']}</td>
                     <td>
                       <button
                         className="icon-button"
@@ -914,7 +949,7 @@ function RegistrationList({
           </div>
           {filtered.length === 0 && (
             <p className="empty-state">
-              No encontramos participantes con ese nombre o email.
+              No encontramos inscripciones con esos filtros.
             </p>
           )}
         </>
@@ -936,6 +971,8 @@ function RegistrationList({
             <dd>{detail.email}</dd>
             <dt>Teléfono</dt>
             <dd>{detail.phone || 'No informado'}</dd>
+            <dt>Estado</dt>
+            <dd>{registrationStatusLabels[detail.status ?? 'accepted']}</dd>
             {event.questions.map((q) => (
               <div key={q.id}>
                 <dt>{q.label}</dt>
@@ -943,6 +980,32 @@ function RegistrationList({
               </div>
             ))}
           </dl>
+          {detail.status === 'pending' && (
+            <button
+              className="button button-small"
+              disabled={accepting || deleting}
+              onClick={async () => {
+                setAccepting(true);
+                setError('');
+                try {
+                  await data.acceptRegistration(detail._id);
+                  const updated = { ...detail, status: 'accepted' as const };
+                  setRows((old) =>
+                    old.map((r) => (r._id === detail._id ? updated : r)),
+                  );
+                  setDetail((current) =>
+                    current?._id === updated._id ? updated : current,
+                  );
+                } catch (err) {
+                  setError(errorMessage(err));
+                } finally {
+                  setAccepting(false);
+                }
+              }}
+            >
+              {accepting ? 'Aceptando…' : 'Aceptar inscripción'}
+            </button>
+          )}
           {confirmDelete ? (
             <div className="notice">
               <p>
@@ -952,14 +1015,14 @@ function RegistrationList({
               <div className="delete-actions">
                 <button
                   className="button button-ghost button-small"
-                  disabled={deleting}
+                  disabled={deleting || accepting}
                   onClick={() => setConfirmDelete(false)}
                 >
                   Cancelar
                 </button>
                 <button
                   className="button button-danger button-small"
-                  disabled={deleting}
+                  disabled={deleting || accepting}
                   onClick={async () => {
                     setDeleting(true);
                     setError('');

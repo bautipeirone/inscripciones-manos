@@ -21,6 +21,7 @@ export const eventFields = {
   deadline: v.number(),
   visible: v.boolean(),
   accepting: v.boolean(),
+  requireApproval: v.optional(v.boolean()),
   capacity: v.number(),
   questions: v.array(questionValidator),
 };
@@ -51,6 +52,7 @@ export default defineSchema({
     phone: v.string(),
     answers: v.record(v.string(), v.string()),
     consent: v.boolean(),
+    status: v.optional(v.union(v.literal('pending'), v.literal('accepted'))),
   })
     .index('by_event', ['eventId'])
     .index('by_event_email', ['eventId', 'email']),

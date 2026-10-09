@@ -371,7 +371,7 @@ test('old demo data is preserved and registration changes keep inventories', asy
   await dialog
     .getByRole('button', { name: 'Confirmar mi inscripción' })
     .click();
-  await dialog.getByRole('button', { name: 'Listo, nos vemos ahí' }).click();
+  await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
   await page.goto('/admin');
   await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
   await page.getByRole('tab', { name: 'Inventarios', exact: true }).click();

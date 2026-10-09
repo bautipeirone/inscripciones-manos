@@ -348,3 +348,131 @@ describe('activity schedules', () => {
     expect(saved.instructions).toBe(event.instructions);
   });
 });
+
+describe('manual inscription approval', () => {
+  test('legacy inscriptions are accepted when read through the admin API', async () => {
+    const { t, admin, eventId } = await setup();
+    await t.run(async (ctx) => {
+      const { website: _website, ...registration } = details;
+      await ctx.db.insert('registrations', { eventId, ...registration });
+      await ctx.db.patch(eventId, { registrationCount: 1 });
+    });
+    const rows = await admin.query(api.registrations.list, {
+      eventId,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+    expect(rows.page[0].status).toBe('accepted');
+  });
+  test('pending inscriptions reserve capacity and only admins can accept without consuming another place', async () => {
+    const { t, admin, eventId } = await setup({
+      requireApproval: true,
+      capacity: 1,
+    });
+    expect(
+      await t.mutation(api.registrations.submit, { eventId, ...details }),
+    ).toEqual({ received: true, approvalRequired: true });
+    const rows = await admin.query(api.registrations.list, {
+      eventId,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+    const registration = rows.page[0];
+    expect(registration.status).toBe('pending');
+    await expect(
+      t.mutation(api.registrations.submit, {
+        eventId,
+        ...details,
+        email: 'second@example.com',
+      }),
+    ).rejects.toThrow('no está disponible');
+    await expect(
+      t.mutation(api.registrations.accept, { id: registration._id }),
+    ).rejects.toThrow('Acceso no autorizado');
+    const userId = await t.run((ctx) =>
+      ctx.db.insert('users', { email: 'user@example.com' }),
+    );
+    const user = t.withIdentity({ subject: `${userId}|session` });
+    await expect(
+      user.mutation(api.registrations.accept, { id: registration._id }),
+    ).rejects.toThrow('Acceso no autorizado');
+    await expect(
+      user.mutation(api.events.save, {
+        id: eventId,
+        event: { ...event, requireApproval: false },
+      }),
+    ).rejects.toThrow('Acceso no autorizado');
+    await admin.mutation(api.registrations.accept, { id: registration._id });
+    await admin.mutation(api.registrations.accept, { id: registration._id });
+    expect(
+      (
+        await admin.query(api.registrations.list, {
+          eventId,
+          paginationOpts: { numItems: 100, cursor: null },
+        })
+      ).page[0].status,
+    ).toBe('accepted');
+    expect(
+      (await t.query(api.events.listPublic, {}))[0].registrationCount,
+    ).toBe(1);
+    await admin.mutation(api.registrations.remove, { id: registration._id });
+    expect(
+      (await t.query(api.events.listPublic, {}))[0].registrationCount,
+    ).toBe(0);
+  });
+  test('changing the policy affects only new inscriptions and duplicate requests preserve the original', async () => {
+    const { t, admin, eventId } = await setup({ requireApproval: true });
+    await t.mutation(api.registrations.submit, { eventId, ...details });
+    await admin.mutation(api.events.save, {
+      id: eventId,
+      event: { ...event, requireApproval: false },
+    });
+    expect(
+      await t.mutation(api.registrations.submit, {
+        eventId,
+        ...details,
+        name: 'Duplicate',
+      }),
+    ).toEqual({ received: true, approvalRequired: false });
+    await t.mutation(api.registrations.submit, {
+      eventId,
+      ...details,
+      email: 'second@example.com',
+    });
+    await admin.mutation(api.events.save, {
+      id: eventId,
+      event: { ...event, requireApproval: true },
+    });
+    await t.mutation(api.registrations.submit, {
+      eventId,
+      ...details,
+      email: 'third@example.com',
+    });
+    const rows = (
+      await admin.query(api.registrations.list, {
+        eventId,
+        paginationOpts: { numItems: 100, cursor: null },
+      })
+    ).page;
+    expect(rows).toHaveLength(3);
+    expect(rows.find((r) => r.email === details.email)).toMatchObject({
+      name: details.name,
+      status: 'pending',
+    });
+    expect(rows.find((r) => r.email === 'second@example.com')?.status).toBe(
+      'accepted',
+    );
+    expect(rows.find((r) => r.email === 'third@example.com')?.status).toBe(
+      'pending',
+    );
+  });
+  test('activities without manual approval still accept inscriptions immediately', async () => {
+    const { t, admin, eventId } = await setup();
+    expect(
+      await t.mutation(api.registrations.submit, { eventId, ...details }),
+    ).toEqual({ received: true, approvalRequired: false });
+    const rows = await admin.query(api.registrations.list, {
+      eventId,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+    expect(rows.page[0].status).toBe('accepted');
+  });
+});
