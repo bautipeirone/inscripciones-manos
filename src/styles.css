@@ -1191,3 +1191,85 @@ tr:last-child td {
     animation: none !important;
   }
 }
+
+.admin-tabs {
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+.inventory-heading h2 {
+  font-size: 26px;
+}
+.inventory-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.import-instructions h3 {
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.import-instructions ul {
+  padding-left: 20px;
+  margin-bottom: 16px;
+}
+.import-instructions li + li {
+  margin-top: 8px;
+}
+.import-instructions .table-scroll {
+  background: #fff;
+  margin-bottom: 16px;
+}
+.inventory-card h3,
+.inventory-table td {
+  overflow-wrap: anywhere;
+}
+.inventory-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.inventory-entry {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fafb;
+  padding: 12px 16px 0;
+  margin: 0 0 20px;
+  min-width: 0;
+}
+.inventory-entry legend {
+  font-size: 14px;
+  font-weight: 600;
+  padding-inline: 6px;
+}
+.inventory-entry-heading {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.inventory-table {
+  min-width: 500px;
+  table-layout: fixed;
+}
+.inventory-table th:nth-child(2),
+.inventory-table th:nth-child(3) {
+  width: 18%;
+}
+
+.attachment-list {
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+}
+.attachment-list li {
+  margin: 8px 0;
+}
+.attachment-list .button {
+  white-space: normal;
+  text-align: left;
+  max-width: 100%;
+}
+.attachment-list small {
+  display: block;
+  margin-top: 4px;
+}

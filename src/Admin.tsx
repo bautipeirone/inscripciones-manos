@@ -17,12 +17,14 @@ import {
   X,
 } from 'lucide-react';
 import { useData } from './data';
+import { Inventories } from './Inventories';
 import {
   csvCell,
   formatDate,
   formatSchedule,
   formatDeadline,
   status,
+  registrationStatusLabels,
   type Event,
   type EventInput,
   type Question,
@@ -33,6 +35,7 @@ import { SiteHeader, SiteFooter } from './Layout';
 
 export function Admin({ onHome }: { onHome: () => void }) {
   const data = useData();
+  const [tab, setTab] = useState<'activities' | 'inventories'>('activities');
   const [editor, setEditor] = useState<Event | 'new' | null>(null);
   const [view, setView] = useState<Event | null>(null);
   const [search, setSearch] = useState('');
@@ -97,158 +100,231 @@ export function Admin({ onHome }: { onHome: () => void }) {
               Sesión iniciada como <strong>{data.admin.email}</strong>.
             </p>
           </div>
-          <button className="button" onClick={() => setEditor('new')}>
-            <Plus size={18} /> Nueva actividad
+          {tab === 'activities' && (
+            <button className="button" onClick={() => setEditor('new')}>
+              <Plus size={18} /> Nueva actividad
+            </button>
+          )}
+        </div>
+        <div
+          className="filter-tabs admin-tabs"
+          role="tablist"
+          aria-label="Secciones de administración"
+          onKeyDown={(e) => {
+            const tabs = Array.from(
+              e.currentTarget.querySelectorAll<HTMLButtonElement>(
+                '[role="tab"]',
+              ),
+            );
+            const index = tabs.indexOf(e.target as HTMLButtonElement);
+            if (index < 0) return;
+            const next =
+              e.key === 'ArrowRight'
+                ? (index + 1) % tabs.length
+                : e.key === 'ArrowLeft'
+                  ? (index + tabs.length - 1) % tabs.length
+                  : e.key === 'Home'
+                    ? 0
+                    : e.key === 'End'
+                      ? tabs.length - 1
+                      : null;
+            if (next !== null) {
+              e.preventDefault();
+              tabs[next].focus();
+              tabs[next].click();
+            }
+          }}
+        >
+          <button
+            id="activities-tab"
+            role="tab"
+            aria-selected={tab === 'activities'}
+            aria-controls="activities-panel"
+            tabIndex={tab === 'activities' ? 0 : -1}
+            className={tab === 'activities' ? 'active' : ''}
+            onClick={() => setTab('activities')}
+          >
+            Actividades
           </button>
-        </div>
-        <div className="stats-grid">
-          <div>
-            <span>
-              <FileText /> Actividades
-            </span>
-            <strong>{data.events.length}</strong>
-            <small>Visitas diagnósticas y Manos a la Obra</small>
-          </div>
-          <div>
-            <span>
-              <CalendarDays /> Inscripciones abiertas
-            </span>
-            <strong>
-              {data.events.filter((e) => status(e, now) === 'open').length}
-            </strong>
-            <small>Actividades que reciben inscripciones</small>
-          </div>
-          <div>
-            <span>
-              <Users /> Inscripciones recibidas
-            </span>
-            <strong>
-              {data.events.reduce((sum, e) => sum + e.registrationCount, 0)}
-            </strong>
-            <small>Entre todas las actividades</small>
-          </div>
-        </div>
-        <div className="admin-list-heading">
-          <h2>Actividades</h2>
-          <label className="search-field">
-            <Search size={18} />
-            <input
-              aria-label="Buscar actividades"
-              placeholder="Buscar una actividad…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
+          <button
+            id="inventories-tab"
+            role="tab"
+            aria-selected={tab === 'inventories'}
+            aria-controls="inventories-panel"
+            tabIndex={tab === 'inventories' ? 0 : -1}
+            className={tab === 'inventories' ? 'active' : ''}
+            onClick={() => setTab('inventories')}
+          >
+            Inventarios
+          </button>
         </div>
         {error && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
-        <div className="admin-event-list">
-          {events.length === 0 ? (
-            <div className="empty-state">
-              <FileText />
-              <h3>
-                {search
-                  ? 'No encontramos coincidencias.'
-                  : 'No hay actividades creadas todavía.'}
-              </h3>
-              <p>
-                {search
-                  ? 'Probá con otro nombre.'
-                  : 'Creá una actividad y prepará su formulario de inscripción.'}
-              </p>
+        <section
+          id="inventories-panel"
+          role="tabpanel"
+          aria-labelledby="inventories-tab"
+          hidden={tab !== 'inventories'}
+        >
+          {tab === 'inventories' && <Inventories />}
+        </section>
+        <section
+          id="activities-panel"
+          role="tabpanel"
+          aria-labelledby="activities-tab"
+          hidden={tab !== 'activities'}
+        >
+          <div className="stats-grid">
+            <div>
+              <span>
+                <FileText /> Actividades
+              </span>
+              <strong>{data.events.length}</strong>
+              <small>Visitas diagnósticas y Manos a la Obra</small>
             </div>
-          ) : (
-            events.map((event) => (
-              <article key={event._id} className="admin-event">
-                <div className="admin-event-icon">
-                  <CalendarDays />
-                </div>
-                <div className="admin-event-info">
-                  <div className="admin-event-title">
-                    <h3>{event.title}</h3>
-                    <Status event={event} now={now} />
+            <div>
+              <span>
+                <CalendarDays /> Inscripciones abiertas
+              </span>
+              <strong>
+                {data.events.filter((e) => status(e, now) === 'open').length}
+              </strong>
+              <small>Actividades que reciben inscripciones</small>
+            </div>
+            <div>
+              <span>
+                <Users /> Inscripciones recibidas
+              </span>
+              <strong>
+                {data.events.reduce((sum, e) => sum + e.registrationCount, 0)}
+              </strong>
+              <small>Entre todas las actividades</small>
+            </div>
+          </div>
+          <div className="admin-list-heading">
+            <h2>Actividades</h2>
+            <label className="search-field">
+              <Search size={18} />
+              <input
+                aria-label="Buscar actividades"
+                placeholder="Buscar una actividad…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="admin-event-list">
+            {events.length === 0 ? (
+              <div className="empty-state">
+                <FileText />
+                <h3>
+                  {search
+                    ? 'No encontramos coincidencias.'
+                    : 'No hay actividades creadas todavía.'}
+                </h3>
+                <p>
+                  {search
+                    ? 'Probá con otro nombre.'
+                    : 'Creá una actividad y prepará su formulario de inscripción.'}
+                </p>
+              </div>
+            ) : (
+              events.map((event) => (
+                <article key={event._id} className="admin-event">
+                  <div className="admin-event-icon">
+                    <CalendarDays />
                   </div>
-                  <p>
-                    {formatSchedule(event)} <span>·</span>{' '}
-                    {event.kind === 'main'
-                      ? `Manos a la Obra ${event.date.slice(0, 4)}`
-                      : 'Visita diagnóstica'}
-                  </p>
-                  <small>
-                    Cierre: {formatDeadline(event.deadline)} (Argentina){' '}
-                    {event.visible
-                      ? '· Visible en el sitio'
-                      : '· Oculto del sitio'}
-                  </small>
-                </div>
-                <button
-                  className="registration-count"
-                  onClick={() => setView(event)}
-                >
-                  <Users size={17} />
-                  <strong>{event.registrationCount}</strong>
-                  <span>Ver inscripciones</span>
-                </button>
-                <div className="admin-event-actions">
+                  <div className="admin-event-info">
+                    <div className="admin-event-title">
+                      <h3>{event.title}</h3>
+                      <Status event={event} now={now} />
+                    </div>
+                    <p>
+                      {formatSchedule(event)} <span>·</span>{' '}
+                      {event.kind === 'main'
+                        ? `Manos a la Obra ${event.date.slice(0, 4)}`
+                        : 'Visita diagnóstica'}
+                    </p>
+                    <small>
+                      Cierre: {formatDeadline(event.deadline)} (Argentina){' '}
+                      {event.visible
+                        ? '· Visible en el sitio'
+                        : '· Oculto del sitio'}
+                    </small>
+                  </div>
                   <button
-                    className="icon-button"
-                    aria-label={`Editar ${event.title}`}
-                    title="Editar formulario"
-                    onClick={() => setEditor(event)}
+                    className="registration-count"
+                    onClick={() => setView(event)}
                   >
-                    <Settings2 size={18} />
+                    <Users size={17} />
+                    <strong>{event.registrationCount}</strong>
+                    <span>Ver inscripciones</span>
                   </button>
-                  <button
-                    className="icon-button"
-                    disabled={busy === event._id}
-                    title={
-                      event.visible
-                        ? 'Ocultar formulario'
-                        : 'Mostrar formulario'
-                    }
-                    aria-label={`${event.visible ? 'Ocultar' : 'Mostrar'} ${event.title}`}
-                    onClick={() =>
-                      void change(event, !event.visible, event.accepting)
-                    }
-                  >
-                    {event.visible ? <Eye size={18} /> : <EyeOff size={18} />}
-                  </button>
-                  <button
-                    className="icon-button"
-                    disabled={
-                      busy === event._id ||
-                      (!event.accepting && event.deadline <= now)
-                    }
-                    title={
-                      event.accepting
-                        ? 'Cerrar inscripción'
-                        : event.deadline <= now
-                          ? 'Editá la fecha de cierre para reabrir'
-                          : 'Abrir inscripción'
-                    }
-                    aria-label={`${event.accepting ? 'Cerrar inscripción' : 'Abrir inscripción'} ${event.title}`}
-                    onClick={() =>
-                      void change(event, event.visible, !event.accepting)
-                    }
-                  >
-                    {event.accepting ? <Pause size={18} /> : <Play size={18} />}
-                  </button>
-                </div>
-              </article>
-            ))
-          )}
-        </div>
-        <div className="admin-tip">
-          <LockKeyhole size={18} />
-          <p>
-            Las inscripciones se cierran automáticamente al llegar a la fecha
-            límite. Ocultar un formulario también impide recibir nuevas
-            inscripciones.
-          </p>
-        </div>
+                  <div className="admin-event-actions">
+                    <button
+                      className="icon-button"
+                      aria-label={`Editar ${event.title}`}
+                      title="Editar formulario"
+                      onClick={() => setEditor(event)}
+                    >
+                      <Settings2 size={18} />
+                    </button>
+                    <button
+                      className="icon-button"
+                      disabled={busy === event._id}
+                      title={
+                        event.visible
+                          ? 'Ocultar formulario'
+                          : 'Mostrar formulario'
+                      }
+                      aria-label={`${event.visible ? 'Ocultar' : 'Mostrar'} ${event.title}`}
+                      onClick={() =>
+                        void change(event, !event.visible, event.accepting)
+                      }
+                    >
+                      {event.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+                    </button>
+                    <button
+                      className="icon-button"
+                      disabled={
+                        busy === event._id ||
+                        (!event.accepting && event.deadline <= now)
+                      }
+                      title={
+                        event.accepting
+                          ? 'Cerrar inscripción'
+                          : event.deadline <= now
+                            ? 'Editá la fecha de cierre para reabrir'
+                            : 'Abrir inscripción'
+                      }
+                      aria-label={`${event.accepting ? 'Cerrar inscripción' : 'Abrir inscripción'} ${event.title}`}
+                      onClick={() =>
+                        void change(event, event.visible, !event.accepting)
+                      }
+                    >
+                      {event.accepting ? (
+                        <Pause size={18} />
+                      ) : (
+                        <Play size={18} />
+                      )}
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+          <div className="admin-tip">
+            <LockKeyhole size={18} />
+            <p>
+              Las inscripciones se cierran automáticamente al llegar a la fecha
+              límite. Ocultar un formulario también impide recibir nuevas
+              inscripciones.
+            </p>
+          </div>
+        </section>
       </main>
       <SiteFooter />
       {editor && (
@@ -392,6 +468,7 @@ function EventEditor({
             capacity: Number(form.get('capacity')),
             visible: form.get('visible') === 'on',
             accepting: form.get('accepting') === 'on',
+            requireApproval: form.get('requireApproval') === 'on',
             questions,
           };
           try {
@@ -640,6 +717,20 @@ function EventEditor({
         </h3>
         <label className="setting-row">
           <span>
+            <strong>Requerir aprobación manual</strong>
+            <small>
+              Las nuevas solicitudes reservan cupo y quedan pendientes. Cambiar
+              esta opción no modifica las inscripciones recibidas.
+            </small>
+          </span>
+          <input
+            type="checkbox"
+            name="requireApproval"
+            defaultChecked={event?.requireApproval ?? false}
+          />
+        </label>
+        <label className="setting-row">
+          <span>
             <strong>Mostrar en el sitio</strong>
             <small>Las personas podrán encontrar esta actividad.</small>
           </span>
@@ -703,6 +794,9 @@ function RegistrationList({
   const [detail, setDetail] = useState<Registration | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [downloading, setDownloading] = useState(false);
   useEffect(() => {
     let active = true;
     data
@@ -720,8 +814,10 @@ function RegistrationList({
       active = false;
     };
   }, [event._id]);
-  const filtered = rows.filter((r) =>
-    `${r.name} ${r.email}`.toLowerCase().includes(search.toLowerCase()),
+  const filtered = rows.filter(
+    (r) =>
+      `${r.name} ${r.email}`.toLowerCase().includes(search.toLowerCase()) &&
+      (statusFilter === 'all' || (r.status ?? 'accepted') === statusFilter),
   );
   const download = () => {
     const lines = [
@@ -731,6 +827,7 @@ function RegistrationList({
         'Teléfono',
         'Fecha de inscripción (UTC)',
         'Consentimiento',
+        'Estado',
         ...event.questions.map((q) => q.label),
       ],
       ...rows.map((r) => [
@@ -739,6 +836,7 @@ function RegistrationList({
         r.phone,
         new Date(r._creationTime).toISOString(),
         r.consent ? 'Sí' : 'No',
+        registrationStatusLabels[r.status ?? 'accepted'],
         ...event.questions.map((q) => r.answers[q.id] ?? ''),
       ]),
     ];
@@ -762,6 +860,17 @@ function RegistrationList({
         {event.title} · {formatSchedule(event)}
       </p>
       <div className="registrations-toolbar">
+        <label>
+          Estado de inscripción
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">Todas</option>
+            <option value="pending">Pendientes</option>
+            <option value="accepted">Aceptadas</option>
+          </select>
+        </label>
         <label className="search-field">
           <Search size={18} />
           <input
@@ -805,6 +914,7 @@ function RegistrationList({
                   <th>Nombre</th>
                   <th>Email</th>
                   <th>Fecha</th>
+                  <th>Estado</th>
                   <th>
                     <span className="sr-only">Detalle</span>
                   </th>
@@ -820,6 +930,7 @@ function RegistrationList({
                         timeZone: 'America/Argentina/Buenos_Aires',
                       })}
                     </td>
+                    <td>{registrationStatusLabels[r.status ?? 'accepted']}</td>
                     <td>
                       <button
                         className="icon-button"
@@ -839,7 +950,7 @@ function RegistrationList({
           </div>
           {filtered.length === 0 && (
             <p className="empty-state">
-              No encontramos participantes con ese nombre o email.
+              No encontramos inscripciones con esos filtros.
             </p>
           )}
         </>
@@ -861,6 +972,8 @@ function RegistrationList({
             <dd>{detail.email}</dd>
             <dt>Teléfono</dt>
             <dd>{detail.phone || 'No informado'}</dd>
+            <dt>Estado</dt>
+            <dd>{registrationStatusLabels[detail.status ?? 'accepted']}</dd>
             {event.questions.map((q) => (
               <div key={q.id}>
                 <dt>{q.label}</dt>
@@ -868,23 +981,78 @@ function RegistrationList({
               </div>
             ))}
           </dl>
+          {!!detail.attachments?.length && (
+            <div className="attachment-list">
+              <h4>Documentos adjuntos</h4>
+              <ul>
+                {detail.attachments.map((file, index) => (
+                  <li key={index}>
+                    <button
+                      className="button button-outline button-small"
+                      disabled={downloading || deleting}
+                      onClick={async () => {
+                        setDownloading(true);
+                        setError('');
+                        try {
+                          await data.downloadAttachment(detail, index);
+                        } catch (error) {
+                          setError(errorMessage(error));
+                        } finally {
+                          setDownloading(false);
+                        }
+                      }}
+                    >
+                      <Download size={16} /> Descargar {file.name}
+                    </button>
+                    <small>{(file.size / 1024).toFixed(0)} KB</small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {detail.status === 'pending' && (
+            <button
+              className="button button-small"
+              disabled={accepting || deleting}
+              onClick={async () => {
+                setAccepting(true);
+                setError('');
+                try {
+                  await data.acceptRegistration(detail._id);
+                  const updated = { ...detail, status: 'accepted' as const };
+                  setRows((old) =>
+                    old.map((r) => (r._id === detail._id ? updated : r)),
+                  );
+                  setDetail((current) =>
+                    current?._id === updated._id ? updated : current,
+                  );
+                } catch (err) {
+                  setError(errorMessage(err));
+                } finally {
+                  setAccepting(false);
+                }
+              }}
+            >
+              {accepting ? 'Aceptando…' : 'Aceptar inscripción'}
+            </button>
+          )}
           {confirmDelete ? (
             <div className="notice">
               <p>
-                ¿Eliminar esta inscripción y sus respuestas? Se liberará el
-                lugar y esta acción no se puede deshacer.
+                ¿Eliminar esta inscripción, sus respuestas y documentos? Se
+                liberará el lugar y esta acción no se puede deshacer.
               </p>
               <div className="delete-actions">
                 <button
                   className="button button-ghost button-small"
-                  disabled={deleting}
+                  disabled={deleting || accepting}
                   onClick={() => setConfirmDelete(false)}
                 >
                   Cancelar
                 </button>
                 <button
                   className="button button-danger button-small"
-                  disabled={deleting}
+                  disabled={deleting || accepting}
                   onClick={async () => {
                     setDeleting(true);
                     setError('');

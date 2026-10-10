@@ -10,9 +10,11 @@
 
 import type * as accounts from "../accounts.js";
 import type * as admin from "../admin.js";
+import type * as attachmentHttp from "../attachmentHttp.js";
 import type * as auth from "../auth.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
+import type * as inventories from "../inventories.js";
 import type * as registrations from "../registrations.js";
 
 import type {
@@ -24,9 +26,11 @@ import type {
 declare const fullApi: ApiFromModules<{
   accounts: typeof accounts;
   admin: typeof admin;
+  attachmentHttp: typeof attachmentHttp;
   auth: typeof auth;
   events: typeof events;
   http: typeof http;
+  inventories: typeof inventories;
   registrations: typeof registrations;
 }>;
 

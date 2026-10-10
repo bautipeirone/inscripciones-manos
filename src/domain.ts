@@ -1,3 +1,4 @@
+import type { Attachment } from './attachments';
 export type Question = {
   id: string;
   label: string;
@@ -18,6 +19,7 @@ export type EventInput = {
   deadline: number;
   visible: boolean;
   accepting: boolean;
+  requireApproval?: boolean;
   capacity: number;
   questions: Question[];
 };
@@ -34,6 +36,16 @@ export type RegistrationInput = {
 export type Registration = RegistrationInput & {
   _id: string;
   _creationTime: number;
+  status?: 'pending' | 'accepted';
+  attachments?: Attachment[];
+};
+export type RegistrationResult = {
+  received: boolean;
+  approvalRequired: boolean;
+};
+export const registrationStatusLabels = {
+  pending: 'Pendiente',
+  accepted: 'Aceptada',
 };
 export function status(event: Event, now = Date.now()) {
   if (!event.visible) return 'hidden';

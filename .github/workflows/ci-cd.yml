@@ -2,7 +2,7 @@ name: CI and deployment
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, 'feat/**']
   push:
     branches: [main, dev]
   merge_group:

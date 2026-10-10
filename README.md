@@ -17,6 +17,8 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 
 - Fechas y horas de inicio y finalización, actividades de varios días e indicaciones para participantes. Se guardan en Convex y se muestran en hora de Argentina.
 - Inscripción sin cuenta, con nombre, email, teléfono opcional y consentimiento.
+- Documentos opcionales en las inscripciones: hasta tres comprobantes PDF, JPEG o PNG de 5 MB cada uno, con descarga privada para administradores y eliminación junto con la inscripción.
+- Aprobación manual opcional por actividad: las nuevas solicitudes quedan pendientes y el administrador puede aceptarlas desde el detalle, filtrarlas por estado y exportar su estado a CSV.
 - Formularios con preguntas cortas, largas o de selección; campos obligatorios configurables.
 - Un registro por email normalizado y evento. Una persona puede participar en varios eventos. Los reintentos no reemplazan respuestas anteriores.
 - Visibilidad y recepción de inscripciones independientes. Los formularios ocultos no aparecen en las consultas públicas y rechazan nuevas inscripciones.
@@ -24,6 +26,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 - `/admin` con cuenta y contraseña. Sin enlace público al panel en producción; cada operación privada verifica además el rol en el servidor.
 - Consulta y búsqueda de participantes, respuestas y exportación CSV protegida contra fórmulas de planillas.
 - Preguntas bloqueadas al recibir la primera inscripción para conservar el significado de las respuestas. El resto del evento se puede editar.
+- Pestaña privada **Inventarios**: registros por fecha y etiqueta, con nombre, cantidad (incluye decimales), unidad de medida y comentarios opcionales por elemento. Permite consultar, buscar, editar, exportar CSV, importar CSV o Excel y eliminar con confirmación.
 - Diseño adaptable, formularios etiquetados, ventanas con gestión del foco y cierre con Escape.
 
 Los eventos de ejemplo **no se cargan en Convex**. La base real comienza vacía para que el equipo publique sus fechas, lugares y formularios definitivos.
@@ -37,6 +40,42 @@ Las cuentas de participantes, la verificación por correo, las ediciones anuales
 Los nuevos formularios requieren horarios de inicio/finalización e indicaciones. Las actividades existentes sin esos campos siguen disponibles y muestran **Horario a confirmar**. Al editarlas, el equipo debe completar esos datos. No se asignan horarios ficticios a las actividades guardadas ni se borran inscripciones de la demo.
 
 Después de actualizar el código, ejecutá `npx convex dev` para desarrollo o `npx convex deploy` para producción antes de publicar el frontend, porque el esquema agrega `startAt`, `endAt` e `instructions` como campos opcionales para conservar registros anteriores.
+
+La función de inventarios agrega la tabla `inventories` y las operaciones privadas `inventories:listAdmin`, `inventories:save` e `inventories:remove`. Desplegá también estos cambios de backend antes de publicar el frontend. No requiere migrar actividades ni inscripciones existentes. La demo conserva sus datos anteriores y empieza con una lista de inventarios vacía.
+
+## Aprobar inscripciones
+
+Al crear o editar una actividad, activá **Requerir aprobación manual** para que las nuevas solicitudes queden pendientes. Tanto las pendientes como las aceptadas reservan cupo; aceptar una solicitud no consume un segundo lugar. Eliminar una inscripción libera su lugar. Cambiar la opción afecta solo a las nuevas solicitudes: las pendientes anteriores necesitan aceptación manual y las aceptadas conservan su estado. Las inscripciones anteriores a esta función se consideran aceptadas.
+
+En **Ver inscripciones**, usá **Estado de inscripción** para filtrar pendientes o aceptadas. Abrí el detalle de una pendiente y elegí **Aceptar inscripción**. La operación está protegida en el servidor y se puede repetir sin afectar el cupo. La confirmación pública explica cuándo se necesita aprobación y conserva el mensaje de que un reintento no reemplaza la inscripción original. Por privacidad, los reintentos informan la política actual de la actividad y no revelan el estado de una inscripción previa para ese email.
+
+Desplegá el backend antes del frontend. Los campos nuevos de configuración y estado son opcionales para conservar actividades e inscripciones existentes; no requieren migración.
+
+## Adjuntar documentos
+
+El formulario de inscripción permite adjuntar documentos **opcionales en todas las actividades**; no hay requisitos de documentación configurables por actividad. Se aceptan hasta **3 archivos PDF, JPEG o PNG**, de **5 MB por archivo**. Los límites, las extensiones, el tipo declarado y la firma del formato se validan en el servidor. Si falla el envío, el formulario conserva los datos y los archivos para volver a intentar. Un reintento con el mismo email conserva los documentos de la inscripción original.
+
+En **Ver inscripciones**, abrí el detalle y elegí **Descargar** junto a un documento. Cada descarga verifica la sesión y el rol administrativo; no se publican enlaces de almacenamiento ni identificadores de archivos en las consultas. Eliminar una inscripción borra también sus archivos. Los envíos rechazados y los reintentos duplicados limpian los archivos nuevos que llegaron a almacenarse.
+
+Los archivos usan el almacenamiento de Convex. El frontend deriva la URL HTTP `https://<deployment>.convex.site` de `VITE_CONVEX_URL`; para un dominio o backend propio, configurá `VITE_CONVEX_SITE_URL` con la URL HTTP correspondiente. Las rutas `/inscriptions` y `/inscription-document` admiten CORS y descargas autenticadas mediante el token de la sesión. Desplegá el backend antes de publicar el frontend. Referencia: [archivos mediante acciones HTTP de Convex](https://docs.convex.dev/file-storage/serve-files).
+
+En la demo, los documentos se guardan en IndexedDB y sobreviven a una recarga del navegador; las actividades e inscripciones siguen en localStorage. Para reiniciar también los archivos de prueba, eliminá la base IndexedDB `manos-demo-documents`. Usá documentos ficticios.
+
+## Registrar inventarios
+
+En `/admin`, elegí **Inventarios → Nuevo inventario**. Completá la fecha y una etiqueta (por ejemplo, «Depósito antes de la jornada») y agregá los elementos relevados. Cada elemento requiere nombre y cantidad; la cantidad admite cero y decimales. La unidad es libre, con sugerencias como unidades, litros o kg. Los comentarios permiten anotar el estado, la ubicación o detalles del material.
+
+Cada inventario representa el relevamiento de una fecha; no calcula movimientos de stock entre registros. Podés guardar varias etiquetas en una misma fecha. La lista muestra primero los más recientes y permite buscar por etiqueta o fecha en formato `AAAA-MM-DD`. **Ver inventario** muestra sus elementos y ofrece **Exportar CSV**, que descarga fecha, etiqueta, nombre, cantidad, unidad y comentarios en un archivo `inventario-AAAA-MM-DD.csv`, con protección contra fórmulas de planillas. El botón de edición permite corregir los elementos, agregar o quitarlos. Eliminar requiere confirmación y borra el inventario completo. Solo los administradores pueden acceder a estas operaciones.
+
+Se admiten hasta 500 elementos por inventario, etiquetas y nombres de hasta 120 caracteres, unidades de hasta 40 y comentarios de hasta 2000. Las reglas se validan tanto en Convex como en la demo.
+
+### Importar un inventario
+
+Elegí **Inventarios → Importar inventario**. El menú incluye instrucciones y una tabla de ejemplo. Se admiten archivos CSV en UTF-8 separados por coma o punto y coma, y Excel `.xlsx` o `.xls` (primera hoja). La primera fila debe contener **Nombre** y **Cantidad**; **Unidad** y **Comentarios** son opcionales. Se reconoce cualquier orden de columnas, sin distinguir mayúsculas o tildes. Otras columnas se ignoran.
+
+Cada fila representa un elemento con nombre y cantidad mayor o igual a cero. Se aceptan decimales con punto o coma, sin separadores de miles. En un CSV separado por coma, los decimales con coma y los textos que incluyan comas o saltos de línea deben ir entre comillas dobles. En Excel se requieren valores, sin fórmulas, errores ni celdas combinadas. Los archivos pueden pesar hasta 5 MB; la tabla admite hasta 500 filas después del encabezado.
+
+Podés incluir **Fecha** y **Etiqueta**, repitiendo el mismo valor para todos los elementos, o completar esos datos en el menú. Las fechas se leen como `AAAA-MM-DD` o como celdas de fecha de Excel. El CSV generado por **Exportar CSV** se puede volver a importar. El archivo se procesa en el navegador y se valida completo antes de habilitar el guardado. Revisá la vista previa y presioná **Guardar inventario** para crear un registro nuevo; los inventarios anteriores se conservan. Si una fila es inválida, se muestra un error y no se guarda ningún elemento del archivo.
 
 ## Conectar Convex
 
@@ -164,7 +203,7 @@ Backend y frontend se publican en pasos separados. Si falla Cloudflare después 
 
 Verificado el 26 de septiembre de 2026: [Convex ofrece un plan Free con recursos limitados](https://www.convex.dev/pricing); su plan **Starter es de pago por uso** por encima de los recursos incluidos. Elegí **Free** para un presupuesto sin cargos por excedentes. [Cloudflare Pages Free admite hasta 500 compilaciones por mes](https://developers.cloudflare.com/pages/platform/limits/).
 
-No se necesita dominio propio, servicio de email, almacenamiento de archivos ni servidor pago. La capacidad gratuita depende del tráfico y del uso: controlá el consumo en Convex. No es una garantía de alojamiento gratis a cualquier escala; si se agota la cuota gratuita, puede limitarse el servicio. Referencia: [límites de Convex](https://docs.convex.dev/production/state/limits).
+No se necesita dominio propio ni servicio de email. Los documentos adjuntos consumen almacenamiento de Convex. La capacidad gratuita depende del tráfico y del uso: controlá el consumo en Convex. No es una garantía de alojamiento gratis a cualquier escala; si se agota la cuota gratuita, puede limitarse el servicio. Referencia: [límites de Convex](https://docs.convex.dev/production/state/limits).
 
 ## Operación y límites del alcance
 
@@ -184,7 +223,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Las pruebas de backend usan `convex-test` y comprueban permisos, bloqueo del registro de cuentas, validación, duplicados, cupos, fechas, visibilidad y preservación de preguntas. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros y navegación por teclado.
+Las pruebas de backend usan `convex-test` y comprueban permisos, bloqueo del registro de cuentas, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales, unidades opcionales e importación de CSV y archivos Excel reales. Las pruebas del lector también cubren fechas, comillas, saltos de línea, límites y rechazo de archivos inválidos.
 
 Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay un backend configurado, ejecutá Vite con `VITE_CONVEX_URL='' npm run dev -- --port 5173` antes de la prueba.
 
@@ -194,6 +233,10 @@ Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay 
 - `src/Layout.tsx`: encabezado, pie institucional y privacidad.
 - `src/RegistrationForm.tsx`: formulario de inscripción sin cuenta.
 - `src/Admin.tsx`: acceso privado, editor y consulta de participantes.
+- `src/Inventories.tsx`: lista, editor y detalle de inventarios en el panel administrativo.
+- `src/inventory.ts`: tipos y validación compartida de inventarios.
+- `src/InventoryImport.tsx`: menú de importación con instrucciones, selección de archivo y vista previa.
+- `src/inventoryImport.ts`: lectura y validación de CSV y Excel; el lector de Excel se carga al seleccionar ese formato.
 - `src/data.tsx`: conexión con Convex y demo local de desarrollo.
 - `src/domain.ts`: reglas compartidas y normalización.
 - `convex/`: esquema, permisos, autenticación y operaciones de base de datos.
