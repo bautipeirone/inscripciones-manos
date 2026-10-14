@@ -17,7 +17,9 @@
   "dependencies": {
     "@auth/core": "^0.41.3",
     "@convex-dev/auth": "^0.0.95",
+    "@convex-dev/resend": "^0.2.8",
     "convex": "^1.46.0",
+    "convex-helpers": "^0.1.128",
     "lucide-react": "^1.48.0",
     "papaparse": "^5.7.0",
     "react": "^19.3.0",
