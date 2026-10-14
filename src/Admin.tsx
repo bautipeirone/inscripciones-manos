@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useData } from './data';
 import { Inventories } from './Inventories';
+import { ConfirmationEmail } from './ConfirmationEmail';
 import {
   csvCell,
   formatDate,
@@ -981,6 +982,15 @@ function RegistrationList({
               </div>
             ))}
           </dl>
+          {data.demo ? (
+            <p className="muted small">La demostración no envía correos.</p>
+          ) : (
+            <ConfirmationEmail
+              key={detail._id}
+              registrationId={detail._id}
+              disabled={deleting}
+            />
+          )}
           {!!detail.attachments?.length && (
             <div className="attachment-list">
               <h4>Documentos adjuntos</h4>

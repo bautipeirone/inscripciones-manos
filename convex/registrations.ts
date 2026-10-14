@@ -12,6 +12,7 @@ import { requireAdmin } from './admin';
 import { registrationFields, attachmentValidator } from './schema';
 import { normalizeEmail, validateRegistration } from '../src/domain';
 import { validateAttachments } from '../src/attachments';
+import { queueConfirmation, removeConfirmation } from './emails';
 const inputValidator = v.object(registrationFields);
 type Submission = Infer<typeof inputValidator>;
 type StoredAttachment = Infer<typeof attachmentValidator>;
@@ -49,7 +50,7 @@ async function record(
     return result;
   }
   const { website: _website, ...registration } = input;
-  await ctx.db.insert('registrations', {
+  const registrationId = await ctx.db.insert('registrations', {
     ...registration,
     name: input.name.trim(),
     email,
@@ -61,6 +62,7 @@ async function record(
   await ctx.db.patch(event._id, {
     registrationCount: event.registrationCount + 1,
   });
+  await queueConfirmation(ctx, event, (await ctx.db.get(registrationId))!);
   return result;
 }
 export const submit = mutation({
@@ -145,6 +147,7 @@ export const remove = mutation({
     await requireAdmin(ctx);
     const registration = await ctx.db.get(id);
     if (!registration) return;
+    await removeConfirmation(ctx, id);
     for (const file of registration.attachments ?? [])
       await ctx.storage.delete(file.storageId);
     const event = await ctx.db.get(registration.eventId);

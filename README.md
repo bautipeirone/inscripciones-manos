@@ -17,6 +17,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 
 - Fechas y horas de inicio y finalización, actividades de varios días e indicaciones para participantes. Se guardan en Convex y se muestran en hora de Argentina.
 - Inscripción sin cuenta, con nombre, email, teléfono opcional y consentimiento.
+- Correo de recepción o confirmación por inscripción, con envío duradero en Convex, reintentos automáticos y estado de entrega privado para administradores.
 - Documentos opcionales en las inscripciones: hasta tres comprobantes PDF, JPEG o PNG de 5 MB cada uno, con descarga privada para administradores y eliminación junto con la inscripción.
 - Aprobación manual opcional por actividad: las nuevas solicitudes quedan pendientes y el administrador puede aceptarlas desde el detalle, filtrarlas por estado y exportar su estado a CSV.
 - Formularios con preguntas cortas, largas o de selección; campos obligatorios configurables.
@@ -50,6 +51,41 @@ Al crear o editar una actividad, activá **Requerir aprobación manual** para qu
 En **Ver inscripciones**, usá **Estado de inscripción** para filtrar pendientes o aceptadas. Abrí el detalle de una pendiente y elegí **Aceptar inscripción**. La operación está protegida en el servidor y se puede repetir sin afectar el cupo. La confirmación pública explica cuándo se necesita aprobación y conserva el mensaje de que un reintento no reemplaza la inscripción original. Por privacidad, los reintentos informan la política actual de la actividad y no revelan el estado de una inscripción previa para ese email.
 
 Desplegá el backend antes del frontend. Los campos nuevos de configuración y estado son opcionales para conservar actividades e inscripciones existentes; no requieren migración.
+
+## Enviar correos de inscripción
+
+Cada inscripción nueva crea un correo dirigido al email registrado, también para participantes sin cuenta y envíos con documentos. Incluye la actividad, fecha y horario en Argentina, lugar, indicaciones, número de inscripción y respuestas. Si la actividad requiere aprobación manual, el asunto dice **Inscripción recibida** y el cuerpo aclara que está **pendiente de aprobación** y que la participación todavía no está confirmada. Las actividades sin horario conservan **Horario a confirmar**.
+
+El servicio usa el [componente oficial de Resend para Convex](https://github.com/get-convex/resend): la cola, ejecución, reintentos y webhook se alojan en el mismo backend de Convex. Solo necesitás una cuenta de Resend para la entrega de correo; no hay otro servidor, worker ni servicio propio para desplegar.
+
+### Configurar el envío
+
+1. Creá una cuenta en [Resend](https://resend.com), agregá un dominio que controles y verificá los registros DNS que indica el proveedor. El dominio gratuito `pages.dev` del frontend no sirve como dominio de envío propio. Referencia: [verificación de dominios](https://resend.com/docs/dashboard/domains/introduction).
+2. Creá una API key con permiso de envío para ese dominio. En **Settings → Environment Variables** del deployment de Convex, configurá:
+
+   | Variable                | Uso                                                                                                             |
+   | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+   | `RESEND_API_KEY`        | API key privada de Resend.                                                                                      |
+   | `EMAIL_FROM`            | Remitente de un dominio verificado, por ejemplo `Proyecto Manos a la Obra <inscripciones@tu-dominio.org>`.      |
+   | `EMAIL_REPLY_TO`        | Opcional: dirección del equipo que recibe las respuestas.                                                       |
+   | `EMAIL_TEST_MODE`       | `false` para enviar a participantes. Si falta o tiene otro valor, solo permite direcciones de prueba de Resend. |
+   | `RESEND_WEBHOOK_SECRET` | Secreto de firma del webhook; se configura en el paso 4.                                                        |
+
+   Estas variables pertenecen al **backend**. Nunca las agregues como `VITE_`, en el repositorio ni como variables públicas de Cloudflare Pages. Configurá desarrollo y producción por separado; usá direcciones `delivered@resend.dev`, `bounced@resend.dev`, etc. para las [pruebas del proveedor](https://resend.com/docs/dashboard/emails/send-test-emails).
+
+3. Desplegá el backend: `npx convex dev --once` para desarrollo o `npx convex deploy` para producción. Esto instala también el componente y sus colas. Publicá el frontend después.
+4. En Resend, creá un webhook para **todos los eventos `email.*`** apuntando a `https://<deployment>.convex.site/resend-webhook`. En este proyecto: `https://animated-lemming-207.convex.site/resend-webhook` en desarrollo y `https://oceanic-crab-449.convex.site/resend-webhook` en producción. Si usás otro deployment, reemplazá la URL. Copiá el secreto de firma a `RESEND_WEBHOOK_SECRET` en ese mismo deployment. Los eventos sin firma válida se rechazan. Referencia: [webhooks de Resend](https://resend.com/docs/dashboard/webhooks/introduction).
+5. Probá una inscripción nueva con una dirección que controles. En `/admin → Ver inscripciones → Ver respuestas`, **Correo de inscripción** debe pasar de la cola a **Enviado al proveedor** y luego a **Entregado**. El último estado requiere el webhook; enviado al proveedor no prueba la llegada a la bandeja de entrada.
+
+### Fallos, reintentos y duplicados
+
+La inscripción, el contenido original del correo y su programación se guardan en una misma transacción. El envío ocurre después: un error de configuración, de red o del proveedor conserva la inscripción y su cupo. Sin credenciales, el correo queda marcado como fallido y se puede reintentar después de configurar el servicio. Los envíos rechazados no crean correos. Un reintento del formulario con el mismo evento y email normalizado conserva la inscripción original y no programa otro correo.
+
+El componente reintenta fallos transitorios hasta cinco veces con espera creciente, usando la misma clave de idempotencia del proveedor. En el detalle privado, el administrador puede consultar el estado, el error y las solicitudes de envío realizadas, y elegir **Reintentar correo** cuando el fallo ocurrió antes de encolarlo o el proveedor confirmó que no se envió. Dos solicitudes de reintento simultáneas programan un solo trabajo. El botón no permite reenviar correos enviados, entregados, rebotados, denunciados como spam ni fallos cuyo resultado sea incierto después de agotar los reintentos de red; estos últimos requieren comprobar el envío en Resend antes de intervenir. El historial del componente está disponible en el dashboard de Convex, seleccionando **resend → emails / deliveryEvents**.
+
+Los reintentos conservan las fechas, lugar, respuestas y estado **al inscribirse**. Editar la actividad o aceptar una solicitud no crea otro correo; esta función confirma la recepción inicial y no agrega notificaciones de aprobación. Las inscripciones anteriores al despliegue no reciben correos retroactivos, ni siquiera por reintentar el formulario. Eliminar una inscripción borra su trabajo local y cancela el correo si sigue en cola; un envío que ya empezó no puede retirarse. Los registros del proveedor y del componente conservan su propio historial; su retención se administra por separado.
+
+La demostración local no envía correos. Las pruebas automatizadas ejecutan el componente y sus colas en `convex-test`, con respuestas del proveedor simuladas; no necesitan credenciales ni envían mensajes reales.
 
 ## Adjuntar documentos
 
