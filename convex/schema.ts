@@ -52,9 +52,18 @@ export const inventoryFields = {
     }),
   ),
 };
+export const participantProfileFields = {
+  userId: v.id('users'),
+  name: v.string(),
+  email: v.string(),
+  phone: v.string(),
+};
 export default defineSchema({
   ...authTables,
   admins: defineTable({ userId: v.id('users') }).index('by_user', ['userId']),
+  participantProfiles: defineTable(participantProfileFields).index('by_user', [
+    'userId',
+  ]),
   inventories: defineTable(inventoryFields).index('by_date', ['date']),
   events: defineTable({ ...eventFields, registrationCount: v.number() }).index(
     'by_visible',

@@ -119,6 +119,8 @@ export function RegistrationForm({
           )}
           <p className="muted small">
             Los campos con * son obligatorios. No necesitás crear una cuenta.
+            {data.participant &&
+              ' Revisá tus datos guardados antes de enviar la inscripción.'}
           </p>
           {event.requireApproval && (
             <p className="notice">
@@ -134,6 +136,7 @@ export function RegistrationForm({
               minLength={2}
               maxLength={120}
               placeholder="Como te gusta que te llamen"
+              defaultValue={data.participant?.name}
             />
           </label>
           <label>
@@ -145,6 +148,7 @@ export function RegistrationForm({
               required
               maxLength={254}
               placeholder="vos@ejemplo.com"
+              defaultValue={data.participant?.email}
             />
             <small>
               Usá el mismo email para evitar inscripciones repetidas.
@@ -158,6 +162,7 @@ export function RegistrationForm({
               autoComplete="tel"
               maxLength={40}
               placeholder="Código de área + número"
+              defaultValue={data.participant?.phone}
             />
           </label>
           {event.questions.map((q) => (

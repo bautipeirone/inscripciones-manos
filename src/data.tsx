@@ -37,8 +37,15 @@ type Data = {
   loading: boolean;
   events: Event[];
   admin: { name: string; email: string } | null;
+  participant: { name: string; email: string; phone: string } | null;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  saveParticipant: (profile: {
+    name: string;
+    email: string;
+    phone: string;
+  }) => Promise<void>;
   saveEvent: (event: EventInput, id?: string) => Promise<void>;
   availability: (
     event: Event,
@@ -69,6 +76,10 @@ export function useData() {
 export function LiveData({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const viewer = useQuery(api.admin.viewer, isAuthenticated ? {} : 'skip');
+  const participant = useQuery(
+    api.participants.profile,
+    isAuthenticated ? {} : 'skip',
+  );
   const publicEvents = useQuery(api.events.listPublic);
   const adminEvents = useQuery(api.events.listAdmin, viewer ? {} : 'skip');
   const inventories = useQuery(api.inventories.listAdmin, viewer ? {} : 'skip');
@@ -81,6 +92,7 @@ export function LiveData({ children }: { children: ReactNode }) {
   const accept = useMutation(api.registrations.accept);
   const saveInventory = useMutation(api.inventories.save);
   const removeInventory = useMutation(api.inventories.remove);
+  const saveParticipant = useMutation(api.participants.saveProfile);
   const convex = useConvex();
   return (
     <Context.Provider
@@ -89,9 +101,17 @@ export function LiveData({ children }: { children: ReactNode }) {
         loading:
           isLoading ||
           publicEvents === undefined ||
-          (isAuthenticated && viewer === undefined),
+          (isAuthenticated &&
+            (viewer === undefined || participant === undefined)),
         events: adminEvents ?? publicEvents ?? [],
         admin: viewer ?? null,
+        participant: participant
+          ? {
+              name: participant.name,
+              email: participant.email,
+              phone: participant.phone,
+            }
+          : null,
         inventories,
         saveInventory: async (inventory, id) => {
           await saveInventory({
@@ -105,7 +125,18 @@ export function LiveData({ children }: { children: ReactNode }) {
         signIn: async (email, password) => {
           await auth.signIn('password', { email, password, flow: 'signIn' });
         },
+        signUp: async (name, email, password) => {
+          await auth.signIn('password', {
+            name,
+            email,
+            password,
+            flow: 'signUp',
+          });
+        },
         signOut: auth.signOut,
+        saveParticipant: async (profile) => {
+          await saveParticipant(profile);
+        },
         saveEvent: async (event, id) => {
           await save({ event, ...(id ? { id: id as Id<'events'> } : {}) });
         },
@@ -285,6 +316,7 @@ function readDemo(): DemoState {
 export function DemoData({ children }: { children: ReactNode }) {
   const [data, setData] = useState(readDemo);
   const [admin, setAdmin] = useState<Data['admin']>(null);
+  const [participant, setParticipant] = useState<Data['participant']>(null);
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE, JSON.stringify(data));
@@ -298,6 +330,7 @@ export function DemoData({ children }: { children: ReactNode }) {
         demo: true,
         loading: false,
         admin,
+        participant,
         events: data.events,
         inventories: admin ? data.inventories : undefined,
         saveInventory: async (inventory, id) => {
@@ -324,8 +357,17 @@ export function DemoData({ children }: { children: ReactNode }) {
         signIn: async () => {
           setAdmin({ name: 'Equipo Manos', email: 'demo@manos.local' });
         },
+        signUp: async (name, email) => {
+          setParticipant({ name, email, phone: '' });
+        },
         signOut: async () => {
           setAdmin(null);
+          setParticipant(null);
+        },
+        saveParticipant: async (profile) => {
+          if (!participant)
+            throw new Error('Iniciá sesión para guardar tus datos.');
+          setParticipant(profile);
         },
         saveEvent: async (event, id) => {
           if (!admin) throw new Error('Ingresá a la administración.');

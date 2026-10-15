@@ -94,18 +94,56 @@ describe('admin boundary', () => {
       'Acceso no autorizado',
     );
   });
-  test('public account creation is disabled', async () => {
+  test('public account creation creates a non-admin participant', async () => {
     const { t } = await setup();
+    const userId = await t.run(async (ctx) => {
+      return ctx.db.insert('users', {
+        email: 'participant@example.com',
+        name: 'Participante de prueba',
+      });
+    });
+    expect(userId).toBeDefined();
+    const participant = t.withIdentity({ subject: `${userId}|session` });
+    expect(await participant.query(api.admin.viewer, {})).toBeNull();
+    expect(await participant.query(api.participants.profile, {})).toMatchObject(
+      {
+        name: 'Participante de prueba',
+        email: 'participant@example.com',
+        phone: '',
+      },
+    );
+  });
+  test('participants can save only their own profile', async () => {
+    const { t } = await setup();
+    const userId = await t.run((ctx) =>
+      ctx.db.insert('users', {
+        email: 'participant@example.com',
+        name: 'Original',
+      }),
+    );
+    const participant = t.withIdentity({ subject: `${userId}|session` });
+    await participant.mutation(api.participants.saveProfile, {
+      name: 'Nombre actualizado',
+      email: 'updated@example.com',
+      phone: '+54 341 555 0101',
+    });
+    expect(await participant.query(api.participants.profile, {})).toMatchObject(
+      {
+        name: 'Nombre actualizado',
+        email: 'updated@example.com',
+        phone: '+54 341 555 0101',
+      },
+    );
     await expect(
       t.action(api.auth.signIn, {
         provider: 'password',
         params: {
-          email: 'attacker@example.com',
+          email: 'other@example.com',
           password: 'a-strong-password',
-          flow: 'signUp',
+          flow: 'signIn',
         },
       }),
-    ).rejects.toThrow('El registro de cuentas no está habilitado');
+    ).rejects.toThrow();
   });
 });
 describe('public registration', () => {
