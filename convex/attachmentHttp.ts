@@ -63,7 +63,7 @@ export const submit = httpAction(async (ctx, request) => {
     // Revalidate availability and capacity atomically after the upload.
     const result = await ctx.runMutation(
       internal.registrations.submitWithAttachments,
-      { input, attachments },
+      { input, attachments, saveProfile: form.get('saveProfile') === 'true' },
     );
     return Response.json(result, { headers: corsHeaders });
   } catch (error) {

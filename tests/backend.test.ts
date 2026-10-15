@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { convexTest } from 'convex-test';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { convexTest, type TestConvex } from 'convex-test';
 import schema from '../convex/schema';
 import { api } from '../convex/_generated/api';
 import {
@@ -54,9 +54,46 @@ async function setup(input: Partial<EventInput> = {}) {
   });
   return { t, admin, eventId };
 }
+beforeAll(async () => {
+  // Convex Auth signs session tokens; tests use a throwaway key.
+  const { privateKey } = await crypto.subtle.generateKey(
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: 'SHA-256',
+    },
+    true,
+    ['sign', 'verify'],
+  );
+  const key = new Uint8Array(
+    await crypto.subtle.exportKey('pkcs8', privateKey),
+  );
+  process.env.JWT_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----\n${btoa(String.fromCharCode(...key))}\n-----END PRIVATE KEY-----`;
+  process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+});
 beforeEach(() => {
   vi.spyOn(Date, 'now').mockReturnValue(date);
 });
+const password = 'una-clave-segura';
+async function signUp(
+  t: TestConvex<typeof schema>,
+  email: string,
+  name = 'Participante de prueba',
+) {
+  await t.action(api.auth.signIn, {
+    provider: 'password',
+    params: { email, password, name, flow: 'signUp' },
+  });
+  const userId = await t.run(
+    async (ctx) =>
+      (await ctx.db
+        .query('users')
+        .withIndex('email', (q) => q.eq('email', email.trim().toLowerCase()))
+        .unique())!._id,
+  );
+  return t.withIdentity({ subject: `${userId}|session` });
+}
 describe('admin boundary', () => {
   test('anonymous callers cannot create, edit, change visibility or read participants', async () => {
     const { t, eventId } = await setup();
@@ -94,18 +131,282 @@ describe('admin boundary', () => {
       'Acceso no autorizado',
     );
   });
-  test('public account creation is disabled', async () => {
+  test('participant sign-up never grants admin access', async () => {
+    const { t, eventId } = await setup();
+    const participant = await signUp(t, 'participante@example.com');
+    expect(await participant.query(api.admin.viewer, {})).toBeNull();
+    await expect(
+      participant.mutation(api.events.save, { event }),
+    ).rejects.toThrow('Acceso no autorizado');
+    await expect(participant.query(api.events.listAdmin, {})).rejects.toThrow(
+      'Acceso no autorizado',
+    );
+    await expect(
+      participant.query(api.registrations.list, {
+        eventId,
+        paginationOpts: { numItems: 100, cursor: null },
+      }),
+    ).rejects.toThrow('Acceso no autorizado');
+    await t.mutation(api.registrations.submit, { eventId, ...details });
+    const id = await t.run(
+      async (ctx) => (await ctx.db.query('registrations').first())!._id,
+    );
+    await expect(
+      participant.query(api.registrations.person, { id }),
+    ).rejects.toThrow('Acceso no autorizado');
+    await expect(
+      participant.mutation(api.registrations.remove, { id }),
+    ).rejects.toThrow('Acceso no autorizado');
+  });
+});
+describe('participant accounts', () => {
+  test('sign up, sign in, and reject wrong or duplicate credentials', async () => {
+    const { t } = await setup();
+    await signUp(t, '  Ana@Example.com ', 'Ana Pérez');
+    const user = await t.run((ctx) =>
+      ctx.db
+        .query('users')
+        .withIndex('email', (q) => q.eq('email', 'ana@example.com'))
+        .unique(),
+    );
+    expect(user?.name).toBe('Ana Pérez');
+    expect(
+      await t.action(api.auth.signIn, {
+        provider: 'password',
+        params: { email: 'ANA@example.com', password, flow: 'signIn' },
+      }),
+    ).toHaveProperty('tokens');
+    await expect(
+      t.action(api.auth.signIn, {
+        provider: 'password',
+        params: {
+          email: 'ana@example.com',
+          password: 'otra-clave-123',
+          flow: 'signIn',
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      t.action(api.auth.signIn, {
+        provider: 'password',
+        params: {
+          email: 'ana@example.com',
+          password: 'otra-clave-123',
+          name: 'Otra persona',
+          flow: 'signUp',
+        },
+      }),
+    ).rejects.toThrow();
+  });
+  test.each([
+    [{ password: 'corta' }, 'La contraseña'],
+    [{ name: '' }, 'Ingresá tu nombre completo'],
+    [{ email: 'no-es-un-email' }, 'Ingresá un email válido'],
+  ])('validates sign-up details: %j', async (change, message) => {
     const { t } = await setup();
     await expect(
       t.action(api.auth.signIn, {
         provider: 'password',
         params: {
-          email: 'attacker@example.com',
-          password: 'a-strong-password',
+          email: 'nueva@example.com',
+          password,
+          name: 'Persona nueva',
           flow: 'signUp',
+          ...change,
         },
       }),
-    ).rejects.toThrow('El registro de cuentas no está habilitado');
+    ).rejects.toThrow(message);
+  });
+  test('profiles prefill from sign-up and only their owner can change them', async () => {
+    const { t } = await setup();
+    const ana = await signUp(t, 'ana@example.com', 'Ana Pérez');
+    const bruno = await signUp(t, 'bruno@example.com', 'Bruno Díaz');
+    expect(await t.query(api.participants.viewer, {})).toBeNull();
+    expect(await ana.query(api.participants.viewer, {})).toEqual({
+      accountEmail: 'ana@example.com',
+      name: 'Ana Pérez',
+      email: 'ana@example.com',
+      phone: '',
+    });
+    await expect(
+      t.mutation(api.participants.saveProfile, {
+        name: 'Nadie',
+        email: 'nadie@example.com',
+        phone: '',
+      }),
+    ).rejects.toThrow('Ingresá a tu cuenta');
+    await expect(
+      ana.mutation(api.participants.saveProfile, {
+        name: 'Ana Pérez',
+        email: 'no-es-un-email',
+        phone: '',
+      }),
+    ).rejects.toThrow('Ingresá un email válido');
+    await ana.mutation(api.participants.saveProfile, {
+      name: ' Ana María Pérez ',
+      email: 'Contacto.Ana@Example.com',
+      phone: ' 341 555-0000 ',
+    });
+    expect(await ana.query(api.participants.viewer, {})).toEqual({
+      accountEmail: 'ana@example.com',
+      name: 'Ana María Pérez',
+      email: 'contacto.ana@example.com',
+      phone: '341 555-0000',
+    });
+    expect((await bruno.query(api.participants.viewer, {}))?.name).toBe(
+      'Bruno Díaz',
+    );
+  });
+  test('signed-in inscriptions are linked to the account and listed only in its history', async () => {
+    const { t, admin, eventId } = await setup();
+    const ana = await signUp(t, 'ana@example.com', 'Ana Pérez');
+    await ana.mutation(api.registrations.submit, {
+      eventId,
+      ...details,
+      name: 'Ana Pérez',
+      email: 'ana@example.com',
+      phone: '341 555-0000',
+      saveProfile: true,
+    });
+    const [entry] = await ana.query(api.participants.history, {});
+    expect(entry.event).toMatchObject({ _id: eventId, title: event.title });
+    expect(entry.answers).toEqual([
+      { label: 'Experiencia', value: 'Primera vez' },
+    ]);
+    expect(entry.phone).toBe('341 555-0000');
+    expect((await ana.query(api.participants.viewer, {}))?.phone).toBe(
+      '341 555-0000',
+    );
+    // Retrying with another email is still one inscription for the account.
+    await ana.mutation(api.registrations.submit, {
+      eventId,
+      ...details,
+      email: 'ana.otra@example.com',
+      phone: '',
+    });
+    expect(await ana.query(api.participants.history, {})).toHaveLength(1);
+    expect((await ana.query(api.participants.viewer, {}))?.phone).toBe(
+      '341 555-0000',
+    );
+    const rows = await admin.query(api.registrations.list, {
+      eventId,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+    expect(rows.page).toHaveLength(1);
+    expect(rows.page[0].userId).toBeDefined();
+    expect(await t.query(api.participants.history, {})).toEqual([]);
+  });
+  test('an account with an unverified email cannot claim inscriptions made without it', async () => {
+    const { t, eventId } = await setup();
+    await t.mutation(api.registrations.submit, {
+      eventId,
+      ...details,
+      phone: '341 555-0000',
+    });
+    const impostor = await signUp(t, details.email);
+    expect(await impostor.query(api.participants.history, {})).toEqual([]);
+    await impostor.mutation(api.registrations.submit, { eventId, ...details });
+    expect(await impostor.query(api.participants.history, {})).toEqual([]);
+    const rows = await t.run((ctx) => ctx.db.query('registrations').collect());
+    expect(rows).toHaveLength(1);
+    expect(rows[0].userId).toBeUndefined();
+  });
+  test('admins see other inscriptions by the same account or email', async () => {
+    const { t, admin, eventId } = await setup();
+    const [second, third] = await Promise.all(
+      ['Segunda jornada', 'Tercera jornada'].map((title) =>
+        admin.mutation(api.events.save, { event: { ...event, title } }),
+      ),
+    );
+    const ana = await signUp(t, 'ana@example.com');
+    await ana.mutation(api.registrations.submit, {
+      eventId,
+      ...details,
+      email: 'ana@example.com',
+    });
+    await ana.mutation(api.registrations.submit, {
+      eventId: second,
+      ...details,
+      email: 'ana.trabajo@example.com',
+    });
+    await t.mutation(api.registrations.submit, {
+      eventId: third,
+      ...details,
+      email: 'ANA@example.com',
+    });
+    await t.mutation(api.registrations.submit, {
+      eventId: third,
+      ...details,
+      email: 'otra@example.com',
+    });
+    const rows = await admin.query(api.registrations.list, {
+      eventId,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+    expect(rows.page[0].otherRegistrations).toBe(2);
+    const person = await admin.query(api.registrations.person, {
+      id: rows.page[0]._id,
+    });
+    expect(
+      person!.inscriptions.map((h) => [h.event.title, h.match]).sort(),
+    ).toEqual([
+      ['Segunda jornada', 'account'],
+      ['Tercera jornada', 'email'],
+    ]);
+    const others = await admin.query(api.registrations.list, {
+      eventId: third,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+    expect(
+      others.page.find((r) => r.email === 'otra@example.com')
+        ?.otherRegistrations,
+    ).toBe(0);
+  });
+});
+describe('participant accounts with manual approval', () => {
+  test('both histories show the approval status of each inscription', async () => {
+    const { t, admin, eventId } = await setup({ requireApproval: true });
+    const open = await admin.mutation(api.events.save, {
+      event: { ...event, title: 'Jornada abierta' },
+    });
+    const ana = await signUp(t, 'ana@example.com');
+    for (const id of [eventId, open])
+      await ana.mutation(api.registrations.submit, {
+        eventId: id,
+        ...details,
+        email: 'ana@example.com',
+      });
+    const statuses = async () =>
+      Object.fromEntries(
+        (await ana.query(api.participants.history, {})).map((h) => [
+          h.event.title,
+          h.status,
+        ]),
+      );
+    expect(await statuses()).toEqual({
+      [event.title]: 'pending',
+      'Jornada abierta': 'accepted',
+    });
+    const [pending] = (
+      await admin.query(api.registrations.list, {
+        eventId,
+        paginationOpts: { numItems: 100, cursor: null },
+      })
+    ).page;
+    const [accepted] = (
+      await admin.query(api.registrations.list, {
+        eventId: open,
+        paginationOpts: { numItems: 100, cursor: null },
+      })
+    ).page;
+    expect(
+      (await admin.query(api.registrations.person, { id: accepted._id }))!
+        .inscriptions,
+    ).toMatchObject([
+      { event: { title: event.title }, status: 'pending', match: 'account' },
+    ]);
+    await admin.mutation(api.registrations.accept, { id: pending._id });
+    expect((await statuses())[event.title]).toBe('accepted');
   });
 });
 describe('public registration', () => {
