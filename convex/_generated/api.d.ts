@@ -15,6 +15,7 @@ import type * as auth from "../auth.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as inventories from "../inventories.js";
+import type * as participants from "../participants.js";
 import type * as registrations from "../registrations.js";
 
 import type {
@@ -31,6 +32,7 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   http: typeof http;
   inventories: typeof inventories;
+  participants: typeof participants;
   registrations: typeof registrations;
 }>;
 

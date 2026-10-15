@@ -22,11 +22,18 @@ import {
   type InventoryInput,
 } from './inventory';
 import {
+  eventSummary,
   normalizeEmail,
   validateEvent,
+  validatePassword,
+  validateProfile,
   validateRegistration,
+  type Account,
   type Event,
   type EventInput,
+  type HistoryEntry,
+  type PersonHistoryEntry,
+  type Profile,
   type Registration,
   type RegistrationInput,
   type RegistrationResult,
@@ -37,8 +44,19 @@ type Data = {
   loading: boolean;
   events: Event[];
   admin: { name: string; email: string } | null;
+  // The signed-in participant; admins also have one in the live app.
+  account: Account | null;
+  // The account's own inscriptions; undefined while loading.
+  history: HistoryEntry[] | undefined;
   signIn: (email: string, password: string) => Promise<void>;
+  participantSignIn: (email: string, password: string) => Promise<void>;
+  participantSignUp: (input: {
+    name: string;
+    email: string;
+    password: string;
+  }) => Promise<void>;
   signOut: () => Promise<void>;
+  saveProfile: (profile: Profile) => Promise<void>;
   saveEvent: (event: EventInput, id?: string) => Promise<void>;
   availability: (
     event: Event,
@@ -46,7 +64,7 @@ type Data = {
     accepting: boolean,
   ) => Promise<void>;
   register: (
-    input: RegistrationInput,
+    input: RegistrationInput & { saveProfile?: boolean },
     files?: File[],
   ) => Promise<RegistrationResult>;
   downloadAttachment: (
@@ -54,6 +72,7 @@ type Data = {
     index: number,
   ) => Promise<void>;
   registrations: (eventId: string) => Promise<Registration[]>;
+  personHistory: (registrationId: string) => Promise<PersonHistoryEntry[]>;
   removeRegistration: (id: string) => Promise<void>;
   acceptRegistration: (id: string) => Promise<void>;
   inventories: Inventory[] | undefined;
@@ -69,6 +88,14 @@ export function useData() {
 export function LiveData({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const viewer = useQuery(api.admin.viewer, isAuthenticated ? {} : 'skip');
+  const account = useQuery(
+    api.participants.viewer,
+    isAuthenticated ? {} : 'skip',
+  );
+  const history = useQuery(
+    api.participants.history,
+    isAuthenticated ? {} : 'skip',
+  );
   const publicEvents = useQuery(api.events.listPublic);
   const adminEvents = useQuery(api.events.listAdmin, viewer ? {} : 'skip');
   const inventories = useQuery(api.inventories.listAdmin, viewer ? {} : 'skip');
@@ -77,11 +104,16 @@ export function LiveData({ children }: { children: ReactNode }) {
   const save = useMutation(api.events.save);
   const update = useMutation(api.events.setAvailability);
   const submit = useMutation(api.registrations.submit);
+  const saveProfile = useMutation(api.participants.saveProfile);
   const remove = useMutation(api.registrations.remove);
   const accept = useMutation(api.registrations.accept);
   const saveInventory = useMutation(api.inventories.save);
   const removeInventory = useMutation(api.inventories.remove);
   const convex = useConvex();
+  // Admins and participants share the password provider; roles live in Convex.
+  const signIn = async (email: string, password: string) => {
+    await auth.signIn('password', { email, password, flow: 'signIn' });
+  };
   return (
     <Context.Provider
       value={{
@@ -89,9 +121,11 @@ export function LiveData({ children }: { children: ReactNode }) {
         loading:
           isLoading ||
           publicEvents === undefined ||
-          (isAuthenticated && viewer === undefined),
+          (isAuthenticated && (viewer === undefined || account === undefined)),
         events: adminEvents ?? publicEvents ?? [],
         admin: viewer ?? null,
+        account: account ?? null,
+        history: isAuthenticated ? history : [],
         inventories,
         saveInventory: async (inventory, id) => {
           await saveInventory({
@@ -102,26 +136,41 @@ export function LiveData({ children }: { children: ReactNode }) {
         removeInventory: async (id) => {
           await removeInventory({ id: id as Id<'inventories'> });
         },
-        signIn: async (email, password) => {
-          await auth.signIn('password', { email, password, flow: 'signIn' });
+        signIn,
+        participantSignIn: signIn,
+        participantSignUp: async ({ name, email, password }) => {
+          await auth.signIn('password', {
+            name,
+            email,
+            password,
+            flow: 'signUp',
+          });
         },
         signOut: auth.signOut,
+        saveProfile: async (profile) => {
+          await saveProfile(profile);
+        },
         saveEvent: async (event, id) => {
           await save({ event, ...(id ? { id: id as Id<'events'> } : {}) });
         },
         availability: async (event, visible, accepting) => {
           await update({ id: event._id as Id<'events'>, visible, accepting });
         },
-        register: async (input, files = []) => {
+        register: async ({ saveProfile, ...input }, files = []) => {
           if (files.length) {
             const form = new FormData();
             form.set('registration', JSON.stringify(input));
+            if (saveProfile) form.set('saveProfile', 'true');
             for (const file of files) form.append('attachments', file);
             let response: Response;
             try {
+              // The session links the inscription to the signed-in account.
               response = await fetch(httpUrl('/inscriptions'), {
                 method: 'POST',
                 body: form,
+                ...(token
+                  ? { headers: { Authorization: `Bearer ${token}` } }
+                  : {}),
               });
             } catch {
               throw new Error(
@@ -143,6 +192,7 @@ export function LiveData({ children }: { children: ReactNode }) {
           return await submit({
             ...input,
             eventId: input.eventId as Id<'events'>,
+            saveProfile,
           });
         },
         downloadAttachment: async (registration, index) => {
@@ -185,6 +235,10 @@ export function LiveData({ children }: { children: ReactNode }) {
           }
           return rows;
         },
+        personHistory: async (registrationId) =>
+          await convex.query(api.registrations.history, {
+            id: registrationId as Id<'registrations'>,
+          }),
       }}
     >
       {children}
@@ -260,10 +314,15 @@ function seedEvents(): Event[] {
   ];
 }
 const STORAGE = 'manos-demo-v1';
+type DemoRegistration = Omit<Registration, 'otherRegistrations'>;
+type DemoAccount = Account & { _id: string };
 type DemoState = {
   events: Event[];
-  registrations: Registration[];
+  registrations: DemoRegistration[];
   inventories: Inventory[];
+  accounts: DemoAccount[];
+  // The signed-in participant account, kept across page loads.
+  session: string | null;
 };
 function readDemo(): DemoState {
   try {
@@ -274,13 +333,28 @@ function readDemo(): DemoState {
         return {
           ...data,
           inventories: Array.isArray(data.inventories) ? data.inventories : [],
+          accounts: Array.isArray(data.accounts) ? data.accounts : [],
+          session: typeof data.session === 'string' ? data.session : null,
         };
     }
   } catch {
     /* Storage can be unavailable in private browsers. */
   }
-  return { events: seedEvents(), registrations: [], inventories: [] };
+  return {
+    events: seedEvents(),
+    registrations: [],
+    inventories: [],
+    accounts: [],
+    session: null,
+  };
 }
+// Mirrors the backend: the same account or, as a hint, the same email.
+const othersFrom = (rows: DemoRegistration[], row: DemoRegistration) =>
+  rows.filter(
+    (r) =>
+      r._id !== row._id &&
+      (r.email === row.email || (!!row.userId && r.userId === row.userId)),
+  );
 // Used only in development. This is never authentication.
 export function DemoData({ children }: { children: ReactNode }) {
   const [data, setData] = useState(readDemo);
@@ -292,12 +366,36 @@ export function DemoData({ children }: { children: ReactNode }) {
       /* The in-memory demo remains usable. */
     }
   }, [data]);
+  const account = data.accounts.find((a) => a._id === data.session) ?? null;
+  const findEvent = (id: string) => data.events.find((e) => e._id === id);
   return (
     <Context.Provider
       value={{
         demo: true,
         loading: false,
         admin,
+        account,
+        history: account
+          ? data.registrations.flatMap((r) => {
+              const activity = findEvent(r.eventId);
+              if (r.userId !== account._id || !activity) return [];
+              return [
+                {
+                  _id: r._id,
+                  _creationTime: r._creationTime,
+                  event: eventSummary(activity),
+                  status: r.status ?? 'accepted',
+                  name: r.name,
+                  email: r.email,
+                  phone: r.phone,
+                  answers: activity.questions
+                    .filter((q) => r.answers[q.id])
+                    .map((q) => ({ label: q.label, value: r.answers[q.id] })),
+                  attachments: r.attachments ?? [],
+                },
+              ];
+            })
+          : [],
         events: data.events,
         inventories: admin ? data.inventories : undefined,
         saveInventory: async (inventory, id) => {
@@ -324,8 +422,52 @@ export function DemoData({ children }: { children: ReactNode }) {
         signIn: async () => {
           setAdmin({ name: 'Equipo Manos', email: 'demo@manos.local' });
         },
+        participantSignIn: async (email) => {
+          const found = data.accounts.find(
+            (a) => a.accountEmail === normalizeEmail(email),
+          );
+          if (!found) throw new Error('Invalid credentials');
+          setData((old) => ({ ...old, session: found._id }));
+        },
+        participantSignUp: async ({ name, email, password }) => {
+          const accountEmail = normalizeEmail(email);
+          validateProfile({ name, email: accountEmail, phone: '' });
+          validatePassword(password);
+          if (data.accounts.some((a) => a.accountEmail === accountEmail))
+            throw new Error('Account already exists');
+          const created = {
+            _id: crypto.randomUUID(),
+            accountEmail,
+            name: name.trim(),
+            email: accountEmail,
+            phone: '',
+          };
+          setData((old) => ({
+            ...old,
+            accounts: [...old.accounts, created],
+            session: created._id,
+          }));
+        },
         signOut: async () => {
           setAdmin(null);
+          setData((old) => ({ ...old, session: null }));
+        },
+        saveProfile: async (profile) => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          validateProfile(profile);
+          setData((old) => ({
+            ...old,
+            accounts: old.accounts.map((a) =>
+              a._id === account._id
+                ? {
+                    ...a,
+                    name: profile.name.trim(),
+                    email: normalizeEmail(profile.email),
+                    phone: profile.phone.trim(),
+                  }
+                : a,
+            ),
+          }));
         },
         saveEvent: async (event, id) => {
           if (!admin) throw new Error('Ingresá a la administración.');
@@ -359,11 +501,15 @@ export function DemoData({ children }: { children: ReactNode }) {
             ),
           }));
         },
-        register: async (input, files = []) => {
-          const event = data.events.find((e) => e._id === input.eventId);
+        register: async ({ saveProfile, ...input }, files = []) => {
+          const event = findEvent(input.eventId);
           if (!event) throw new Error('No encontramos el evento.');
           validateRegistration(event, input);
-          const email = normalizeEmail(input.email);
+          const details = {
+            name: input.name.trim(),
+            email: normalizeEmail(input.email),
+            phone: input.phone.trim(),
+          };
           const attachments = files.map((file) => ({
             name: file.name,
             contentType: file.type,
@@ -375,23 +521,31 @@ export function DemoData({ children }: { children: ReactNode }) {
             received: true,
             approvalRequired: event.requireApproval === true,
           };
-          if (
-            data.registrations.some(
-              (r) => r.eventId === input.eventId && r.email === email,
-            )
-          )
+          const duplicate = (rows: DemoRegistration[]) =>
+            rows.some(
+              (r) =>
+                r.eventId === input.eventId &&
+                (r.email === details.email ||
+                  (!!account && r.userId === account._id)),
+            );
+          const keepProfile = (accounts: DemoAccount[]) =>
+            account && saveProfile
+              ? accounts.map((a) =>
+                  a._id === account._id ? { ...a, ...details } : a,
+                )
+              : accounts;
+          if (duplicate(data.registrations)) {
+            setData((old) => ({ ...old, accounts: keepProfile(old.accounts) }));
             return result;
+          }
           const id = crypto.randomUUID();
           if (files.length) await saveDemoDocuments(id, files);
           setData((old) => {
-            if (
-              old.registrations.some(
-                (r) => r.eventId === input.eventId && r.email === email,
-              )
-            )
-              return old;
+            const accounts = keepProfile(old.accounts);
+            if (duplicate(old.registrations)) return { ...old, accounts };
             return {
               ...old,
+              accounts,
               events: old.events.map((e) =>
                 e._id === input.eventId
                   ? { ...e, registrationCount: e.registrationCount + 1 }
@@ -401,26 +555,50 @@ export function DemoData({ children }: { children: ReactNode }) {
                 ...old.registrations,
                 {
                   ...input,
-                  email,
-                  name: input.name.trim(),
+                  ...details,
                   _id: id,
                   attachments,
                   _creationTime: Date.now(),
                   status: event.requireApproval ? 'pending' : 'accepted',
+                  ...(account ? { userId: account._id } : {}),
                 },
               ],
             };
           });
-          return {
-            received: true,
-            approvalRequired: event.requireApproval === true,
-          };
+          return result;
         },
         registrations: async (eventId) => {
           if (!admin) throw new Error('Acceso no autorizado.');
           return data.registrations
             .filter((r) => r.eventId === eventId)
-            .reverse();
+            .reverse()
+            .map((r) => ({
+              ...r,
+              otherRegistrations: othersFrom(data.registrations, r).length,
+            }));
+        },
+        personHistory: async (registrationId) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          const row = data.registrations.find((r) => r._id === registrationId);
+          if (!row) return [];
+          return othersFrom(data.registrations, row)
+            .flatMap((r) => {
+              const activity = findEvent(r.eventId);
+              if (!activity) return [];
+              return [
+                {
+                  _id: r._id,
+                  _creationTime: r._creationTime,
+                  event: eventSummary(activity),
+                  status: r.status ?? ('accepted' as const),
+                  match:
+                    row.userId && r.userId === row.userId
+                      ? ('account' as const)
+                      : ('email' as const),
+                },
+              ];
+            })
+            .sort((a, b) => b.event.date.localeCompare(a.event.date));
         },
         acceptRegistration: async (id) => {
           if (!admin) throw new Error('Acceso no autorizado.');

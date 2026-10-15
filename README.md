@@ -19,6 +19,8 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 - Inscripción sin cuenta, con nombre, email, teléfono opcional y consentimiento.
 - Documentos opcionales en las inscripciones: hasta tres comprobantes PDF, JPEG o PNG de 5 MB cada uno, con descarga privada para administradores y eliminación junto con la inscripción.
 - Aprobación manual opcional por actividad: las nuevas solicitudes quedan pendientes y el administrador puede aceptarlas desde el detalle, filtrarlas por estado y exportar su estado a CSV.
+- Cuentas opcionales de participantes en `/account`: registro, ingreso y cierre de sesión desde el sitio público. Guardan nombre, email de contacto y teléfono para completar los formularios; la persona los revisa y puede cambiarlos antes de cada envío. La página de la cuenta muestra sus inscripciones próximas y anteriores, con su estado de aprobación, los datos y respuestas enviados y los nombres de los documentos adjuntos.
+- En `/admin`, cada inscripción indica si se hizo con cuenta y cuántas otras inscripciones tiene la misma persona (por cuenta o por email). El detalle lista esas actividades para organizar los grupos; el CSV incluye ambas columnas.
 - Formularios con preguntas cortas, largas o de selección; campos obligatorios configurables.
 - Un registro por email normalizado y evento. Una persona puede participar en varios eventos. Los reintentos no reemplazan respuestas anteriores.
 - Visibilidad y recepción de inscripciones independientes. Los formularios ocultos no aparecen en las consultas públicas y rechazan nuevas inscripciones.
@@ -33,13 +35,13 @@ Los eventos de ejemplo **no se cargan en Convex**. La base real comienza vacía 
 
 ## Compatibilidad con la versión anterior
 
-Se reutiliza el frontend de `~/manos` sobre React/Vite y Convex. La página pública conserva la presentación institucional y muestra detalles en `/activities/:id`; desde allí se completa la inscripción sin una cuenta de participante. La administración sigue en `/admin`.
+Se reutiliza el frontend de `~/manos` sobre React/Vite y Convex. La página pública conserva la presentación institucional y muestra detalles en `/activities/:id`; desde allí se completa la inscripción, con o sin cuenta de participante. La administración sigue en `/admin`.
 
-Las cuentas de participantes, la verificación por correo, las ediciones anuales y las invitaciones administrativas de la versión anterior quedan fuera de esta etapa. No se importan su backend de Supabase, sus credenciales ni sus datos. El proyecto original en `~/manos` se conserva intacto.
+Las cuentas de participantes se reimplementaron sobre Convex Auth. La verificación por correo, la recuperación de contraseñas por email, las ediciones anuales y las invitaciones administrativas de la versión anterior quedan fuera de esta etapa. No se importan su backend de Supabase, sus credenciales ni sus datos. El proyecto original en `~/manos` se conserva intacto.
 
 Los nuevos formularios requieren horarios de inicio/finalización e indicaciones. Las actividades existentes sin esos campos siguen disponibles y muestran **Horario a confirmar**. Al editarlas, el equipo debe completar esos datos. No se asignan horarios ficticios a las actividades guardadas ni se borran inscripciones de la demo.
 
-Después de actualizar el código, ejecutá `npx convex dev` para desarrollo o `npx convex deploy` para producción antes de publicar el frontend, porque el esquema agrega `startAt`, `endAt` e `instructions` como campos opcionales para conservar registros anteriores.
+Después de actualizar el código, ejecutá `npx convex dev` para desarrollo o `npx convex deploy` para producción antes de publicar el frontend, porque el esquema agrega `startAt`, `endAt` e `instructions` como campos opcionales para conservar registros anteriores. Las cuentas de participantes agregan la tabla `profiles` y el campo opcional `userId` en `registrations`; las inscripciones anteriores quedan sin cuenta y no requieren migración.
 
 La función de inventarios agrega la tabla `inventories` y las operaciones privadas `inventories:listAdmin`, `inventories:save` e `inventories:remove`. Desplegá también estos cambios de backend antes de publicar el frontend. No requiere migrar actividades ni inscripciones existentes. La demo conserva sus datos anteriores y empieza con una lista de inventarios vacía.
 
@@ -93,13 +95,15 @@ Configurá las claves de autenticación siguiendo el asistente oficial:
 npx @convex-dev/auth --skip-git-check --web-server-url http://localhost:5173
 ```
 
-Esto configura `SITE_URL`, `JWT_PRIVATE_KEY` y `JWKS` en el servidor. Los archivos de autenticación ya están implementados: **conservá el proveedor Password y la restricción de registro existentes**, no los reemplaces por el ejemplo vacío del asistente. Si muestra los archivos existentes, confirmá que ya contienen la configuración.
+Esto configura `SITE_URL`, `JWT_PRIVATE_KEY` y `JWKS` en el servidor. Los archivos de autenticación ya están implementados: **conservá el proveedor Password existente y su validación de registro**, no los reemplaces por el ejemplo vacío del asistente. Si muestra los archivos existentes, confirmá que ya contienen la configuración.
 
 Referencia: [configuración de Convex Auth](https://labs.convex.dev/auth/setup).
 
 ### Crear el administrador
 
-El registro público de cuentas está deshabilitado. Las cuentas se crean mediante una acción **interna**, accesible solo con acceso de desarrollador al proyecto.
+El registro público crea solo cuentas de participantes, sin acceso administrativo. Las cuentas de administración se crean mediante una acción **interna**, accesible solo con acceso de desarrollador al proyecto.
+
+No otorgues acceso administrativo a una cuenta creada desde el sitio: el registro público no verifica que el email pertenezca a quien lo usa. Si `accounts:provision` informa que la cuenta ya existe, usá otro email para la administración.
 
 1. En **Settings → Environment Variables** del dashboard de Convex, agregá `ADMIN_EMAIL` y `ADMIN_PASSWORD`. Usá una contraseña única de al menos 12 caracteres. Estas variables pertenecen al backend: nunca uses el prefijo `VITE_` para secretos.
 2. Ejecutá:
@@ -208,6 +212,9 @@ No se necesita dominio propio ni servicio de email. Los documentos adjuntos cons
 ## Operación y límites del alcance
 
 - El email evita duplicados por evento, pero no prueba la identidad de una persona: alguien puede usar otro email. No hay verificación por correo ni correo de confirmación automático.
+- Por eso, una cuenta nueva **nunca** se vincula con inscripciones anteriores hechas con su email: el historial de la cuenta incluye solo lo enviado con la sesión iniciada. Así nadie puede crear una cuenta con un email ajeno para ver sus datos. Una persona con cuenta tiene una inscripción por actividad, aunque cambie el email en el formulario.
+- Las coincidencias por email que ve el equipo en `/admin` son orientativas por la misma razón; las coincidencias por cuenta son más confiables.
+- No hay recuperación automática de contraseñas porque no hay servicio de email. Quien olvide su contraseña puede inscribirse sin cuenta. El registro de cuentas no tiene CAPTCHA; Convex Auth limita los intentos fallidos de ingreso.
 - Los formularios incluyen un campo trampa para bots y validación en el servidor. No hay CAPTCHA ni protección avanzada contra envíos automatizados; incorporá Turnstile con verificación en el servidor si aparece abuso.
 - Solo los administradores pueden leer participantes. Las exportaciones contienen datos personales; compartilas solo con el equipo correspondiente.
 - El texto de privacidad indica el uso concreto de los datos. Antes de publicar, adaptá el nombre del proyecto y agregá el canal de contacto real del equipo organizador. No se inventó un email o dirección de contacto.
@@ -223,7 +230,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Las pruebas de backend usan `convex-test` y comprueban permisos, bloqueo del registro de cuentas, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales, unidades opcionales e importación de CSV y archivos Excel reales. Las pruebas del lector también cubren fechas, comillas, saltos de línea, límites y rechazo de archivos inválidos.
+Las pruebas de backend usan `convex-test` y comprueban permisos, cuentas de participantes sin acceso administrativo, aislamiento del historial y los perfiles, historial para administradores, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción con y sin cuenta, datos precargados, historial personal, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales, unidades opcionales e importación de CSV y archivos Excel reales. Las pruebas del lector también cubren fechas, comillas, saltos de línea, límites y rechazo de archivos inválidos.
 
 Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay un backend configurado, ejecutá Vite con `VITE_CONVEX_URL='' npm run dev -- --port 5173` antes de la prueba.
 
@@ -231,7 +238,8 @@ Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay 
 
 - `src/App.tsx`: listado público y detalle de actividades.
 - `src/Layout.tsx`: encabezado, pie institucional y privacidad.
-- `src/RegistrationForm.tsx`: formulario de inscripción sin cuenta.
+- `src/RegistrationForm.tsx`: formulario de inscripción, con datos precargados si hay una cuenta.
+- `src/Account.tsx`: ingreso, registro, datos guardados e historial de participantes.
 - `src/Admin.tsx`: acceso privado, editor y consulta de participantes.
 - `src/Inventories.tsx`: lista, editor y detalle de inventarios en el panel administrativo.
 - `src/inventory.ts`: tipos y validación compartida de inventarios.

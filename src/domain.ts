@@ -38,6 +38,10 @@ export type Registration = RegistrationInput & {
   _creationTime: number;
   status?: 'pending' | 'accepted';
   attachments?: Attachment[];
+  // Present when a signed-in participant submitted the inscription.
+  userId?: string;
+  // Other inscriptions from the same account or email, for admins only.
+  otherRegistrations: number;
 };
 export type RegistrationResult = {
   received: boolean;
@@ -46,6 +50,39 @@ export type RegistrationResult = {
 export const registrationStatusLabels = {
   pending: 'Pendiente',
   accepted: 'Aceptada',
+};
+export type Profile = { name: string; email: string; phone: string };
+export type Account = Profile & { accountEmail: string };
+export type EventSummary = Pick<
+  Event,
+  | '_id'
+  | 'title'
+  | 'kind'
+  | 'date'
+  | 'startAt'
+  | 'endAt'
+  | 'location'
+  | 'visible'
+>;
+// A participant's own inscription, as shown in their account.
+export type HistoryEntry = {
+  _id: string;
+  _creationTime: number;
+  event: EventSummary;
+  status: 'pending' | 'accepted';
+  name: string;
+  email: string;
+  phone: string;
+  answers: { label: string; value: string }[];
+  attachments: Attachment[];
+};
+// Another inscription by the same person, as shown to admins.
+export type PersonHistoryEntry = {
+  _id: string;
+  _creationTime: number;
+  event: EventSummary;
+  status: 'pending' | 'accepted';
+  match: 'account' | 'email';
 };
 export function status(event: Event, now = Date.now()) {
   if (!event.visible) return 'hidden';
@@ -151,14 +188,7 @@ export function validateEvent(event: EventInput, requireSchedule = false) {
       throw new Error('Agregá entre 2 y 30 opciones distintas por pregunta.');
   }
 }
-export function validateRegistration(
-  event: Event,
-  input: RegistrationInput,
-  now = Date.now(),
-) {
-  if (status(event, now) !== 'open')
-    throw new Error('La inscripción para esta jornada no está disponible.');
-  if (input.website) throw new Error('No pudimos procesar la inscripción.');
+export function validateProfile(input: Profile) {
   if (input.name.trim().length < 2 || input.name.length > 120)
     throw new Error('Ingresá tu nombre completo.');
   if (
@@ -167,6 +197,20 @@ export function validateRegistration(
   )
     throw new Error('Ingresá un email válido.');
   if (input.phone.length > 40) throw new Error('Revisá el número de teléfono.');
+}
+export function validatePassword(password: string) {
+  if (password.length < 8 || password.length > 128)
+    throw new Error('La contraseña debe tener entre 8 y 128 caracteres.');
+}
+export function validateRegistration(
+  event: Event,
+  input: RegistrationInput,
+  now = Date.now(),
+) {
+  if (status(event, now) !== 'open')
+    throw new Error('La inscripción para esta jornada no está disponible.');
+  if (input.website) throw new Error('No pudimos procesar la inscripción.');
+  validateProfile(input);
   if (!input.consent)
     throw new Error('Necesitamos tu autorización para guardar la inscripción.');
   if (
@@ -207,7 +251,9 @@ export function csvCell(value: string) {
   return '"' + safe.replaceAll('"', '""') + '"';
 }
 
-export function formatSchedule(event: EventInput) {
+export function formatSchedule(
+  event: Pick<EventInput, 'date' | 'startAt' | 'endAt'>,
+) {
   if (event.startAt === undefined || event.endAt === undefined)
     return `${formatDate(event.date)} · Horario a confirmar`;
   const time = new Intl.DateTimeFormat('es-AR', {
@@ -223,3 +269,32 @@ export function formatSchedule(event: EventInput) {
     return `${formatDate(event.date)}, de ${time.format(event.startAt)} a ${time.format(event.endAt)} hs`;
   return `${formatDate(event.date)}, ${time.format(event.startAt)} hs – ${formatDate(endDate)}, ${time.format(event.endAt)} hs`;
 }
+export const activityUrl = (event: Pick<Event, '_id'>) =>
+  `/activities/${encodeURIComponent(event._id)}`;
+export const activityKind = (event: Pick<Event, 'kind' | 'date'>) =>
+  event.kind === 'main'
+    ? `Manos a la Obra ${event.date.slice(0, 4)}`
+    : 'Visita diagnóstica';
+// Activities without a schedule end with their (Argentine) date.
+export const activityEnd = (event: Pick<Event, 'date' | 'endAt'>) =>
+  event.endAt ?? Date.parse(event.date + 'T23:59:59-03:00');
+// Only the public activity fields; never the questions or internal counters.
+export const eventSummary = ({
+  _id,
+  title,
+  kind,
+  date,
+  startAt,
+  endAt,
+  location,
+  visible,
+}: EventSummary): EventSummary => ({
+  _id,
+  title,
+  kind,
+  date,
+  startAt,
+  endAt,
+  location,
+  visible,
+});

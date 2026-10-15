@@ -52,24 +52,37 @@ export const inventoryFields = {
     }),
   ),
 };
+export const profileFields = {
+  name: v.string(),
+  email: v.string(),
+  phone: v.string(),
+};
 export default defineSchema({
   ...authTables,
   admins: defineTable({ userId: v.id('users') }).index('by_user', ['userId']),
   inventories: defineTable(inventoryFields).index('by_date', ['date']),
+  // Personal details a participant saves to prefill inscription forms.
+  profiles: defineTable({ userId: v.id('users'), ...profileFields }).index(
+    'by_user',
+    ['userId'],
+  ),
   events: defineTable({ ...eventFields, registrationCount: v.number() }).index(
     'by_visible',
     ['visible'],
   ),
   registrations: defineTable({
     eventId: v.id('events'),
-    name: v.string(),
-    email: v.string(),
-    phone: v.string(),
+    ...profileFields,
     answers: v.record(v.string(), v.string()),
     consent: v.boolean(),
     attachments: v.optional(v.array(attachmentValidator)),
     status: v.optional(v.union(v.literal('pending'), v.literal('accepted'))),
+    // Set only when submitted from a signed-in session; never inferred from
+    // the email, which is not verified.
+    userId: v.optional(v.id('users')),
   })
     .index('by_event', ['eventId'])
-    .index('by_event_email', ['eventId', 'email']),
+    .index('by_event_email', ['eventId', 'email'])
+    .index('by_email', ['email'])
+    .index('by_user_event', ['userId', 'eventId']),
 });

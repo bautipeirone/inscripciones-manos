@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { ArrowRight, CalendarDays, MapPin, Check, Heart } from 'lucide-react';
 import { useData } from './data';
-import { formatSchedule, formatDeadline, status, type Event } from './domain';
+import {
+  activityUrl,
+  formatSchedule,
+  formatDeadline,
+  status,
+  type Event,
+} from './domain';
 import { Modal, errorMessage } from './ui';
 import { ATTACHMENT_ACCEPT, validateAttachments } from './attachments';
+import { signInUrl } from './Account';
 
 export function RegistrationForm({
   event,
@@ -13,6 +20,7 @@ export function RegistrationForm({
   onClose: () => void;
 }) {
   const data = useData();
+  const { account } = data;
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [approvalRequired, setApprovalRequired] = useState(false);
@@ -58,6 +66,15 @@ export function RegistrationForm({
           <p className="muted">
             Guardá estos datos. El equipo podrá contactarte con más información.
           </p>
+          {account && (
+            <p className="muted">
+              Podés consultar tus inscripciones y su estado en{' '}
+              <a className="text-link" href="/account">
+                Mi cuenta
+              </a>
+              .
+            </p>
+          )}
           {data.demo && (
             <p className="notice">
               Modo de prueba: esto no es una inscripción real.
@@ -91,6 +108,7 @@ export function RegistrationForm({
                   ),
                   consent: form.get('consent') === 'on',
                   website: String(form.get('website') ?? ''),
+                  saveProfile: !!account && form.get('saveProfile') === 'on',
                 },
                 files,
               );
@@ -117,9 +135,20 @@ export function RegistrationForm({
               Vista de prueba. Usá datos ficticios; no se envían al equipo.
             </p>
           )}
-          <p className="muted small">
-            Los campos con * son obligatorios. No necesitás crear una cuenta.
-          </p>
+          {account ? (
+            <p className="muted small">
+              Los campos con * son obligatorios. Completamos tus datos con tu
+              cuenta: revisalos antes de confirmar.
+            </p>
+          ) : (
+            <p className="muted small">
+              Los campos con * son obligatorios. No necesitás crear una cuenta.{' '}
+              <a className="text-link" href={signInUrl(activityUrl(event))}>
+                Ingresá
+              </a>{' '}
+              si tenés una para completar tus datos.
+            </p>
+          )}
           {event.requireApproval && (
             <p className="notice">
               Tu solicitud quedará pendiente hasta que el equipo la acepte.
@@ -133,6 +162,7 @@ export function RegistrationForm({
               required
               minLength={2}
               maxLength={120}
+              defaultValue={account?.name}
               placeholder="Como te gusta que te llamen"
             />
           </label>
@@ -144,6 +174,7 @@ export function RegistrationForm({
               autoComplete="email"
               required
               maxLength={254}
+              defaultValue={account?.email}
               placeholder="vos@ejemplo.com"
             />
             <small>
@@ -157,6 +188,7 @@ export function RegistrationForm({
               type="tel"
               autoComplete="tel"
               maxLength={40}
+              defaultValue={account?.phone}
               placeholder="Código de área + número"
             />
           </label>
@@ -239,6 +271,15 @@ export function RegistrationForm({
               <input name="website" tabIndex={-1} autoComplete="off" />
             </label>
           </div>
+          {account && (
+            <label className="checkbox-label">
+              <input type="checkbox" name="saveProfile" defaultChecked />
+              <span>
+                Guardar mi nombre, email y teléfono en mi cuenta para próximas
+                inscripciones.
+              </span>
+            </label>
+          )}
           <label className="checkbox-label">
             <input type="checkbox" name="consent" required />
             <span>

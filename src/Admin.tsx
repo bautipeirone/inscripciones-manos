@@ -27,6 +27,7 @@ import {
   registrationStatusLabels,
   type Event,
   type EventInput,
+  type PersonHistoryEntry,
   type Question,
   type Registration,
 } from './domain';
@@ -348,6 +349,12 @@ function Login() {
         <div className="login-card">
           <h1>Ingresar</h1>
           <p>Acceso exclusivo para el Equipo de Inscripciones.</p>
+          {data.account && !data.demo && (
+            <p className="notice" role="status">
+              Ingresaste como participante con {data.account.accountEmail}. Esta
+              cuenta no tiene acceso a la administración.
+            </p>
+          )}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -828,6 +835,8 @@ function RegistrationList({
         'Fecha de inscripción (UTC)',
         'Consentimiento',
         'Estado',
+        'Con cuenta',
+        'Otras inscripciones',
         ...event.questions.map((q) => q.label),
       ],
       ...rows.map((r) => [
@@ -837,6 +846,8 @@ function RegistrationList({
         new Date(r._creationTime).toISOString(),
         r.consent ? 'Sí' : 'No',
         registrationStatusLabels[r.status ?? 'accepted'],
+        r.userId ? 'Sí' : 'No',
+        String(r.otherRegistrations),
         ...event.questions.map((q) => r.answers[q.id] ?? ''),
       ]),
     ];
@@ -915,6 +926,7 @@ function RegistrationList({
                   <th>Email</th>
                   <th>Fecha</th>
                   <th>Estado</th>
+                  <th>Otras inscripciones</th>
                   <th>
                     <span className="sr-only">Detalle</span>
                   </th>
@@ -931,6 +943,7 @@ function RegistrationList({
                       })}
                     </td>
                     <td>{registrationStatusLabels[r.status ?? 'accepted']}</td>
+                    <td>{r.otherRegistrations}</td>
                     <td>
                       <button
                         className="icon-button"
@@ -974,6 +987,12 @@ function RegistrationList({
             <dd>{detail.phone || 'No informado'}</dd>
             <dt>Estado</dt>
             <dd>{registrationStatusLabels[detail.status ?? 'accepted']}</dd>
+            <dt>Cuenta de participante</dt>
+            <dd>
+              {detail.userId
+                ? 'Se inscribió con su cuenta'
+                : 'Se inscribió sin cuenta'}
+            </dd>
             {event.questions.map((q) => (
               <div key={q.id}>
                 <dt>{q.label}</dt>
@@ -1010,6 +1029,7 @@ function RegistrationList({
               </ul>
             </div>
           )}
+          <PersonHistory key={detail._id} registration={detail} />
           {detail.status === 'pending' && (
             <button
               className="button button-small"
@@ -1084,5 +1104,60 @@ function RegistrationList({
         </section>
       )}
     </Modal>
+  );
+}
+// Helps the team see who already took part, e.g. before the January activity.
+function PersonHistory({ registration }: { registration: Registration }) {
+  const data = useData();
+  const [entries, setEntries] = useState<PersonHistoryEntry[] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    data
+      .personHistory(registration._id)
+      .then((result) => {
+        if (active) setEntries(result);
+      })
+      .catch((err) => {
+        if (active) setError(errorMessage(err));
+      });
+    return () => {
+      active = false;
+    };
+  }, [registration._id]);
+  return (
+    <div className="person-history">
+      <h4>Otras inscripciones</h4>
+      {error ? (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      ) : entries === null ? (
+        <p className="muted small" role="status">
+          Cargando historial…
+        </p>
+      ) : entries.length === 0 ? (
+        <p className="muted small">No tiene otras inscripciones.</p>
+      ) : (
+        <>
+          <ul>
+            {entries.map((entry) => (
+              <li key={entry._id}>
+                <strong>{entry.event.title}</strong>
+                <span>{formatSchedule(entry.event)}</span>
+                <small>
+                  {entry.match === 'account' ? 'Misma cuenta' : 'Mismo email'} ·{' '}
+                  {registrationStatusLabels[entry.status]}
+                </small>
+              </li>
+            ))}
+          </ul>
+          <p className="muted small">
+            Los emails no se verifican: las coincidencias por email son
+            orientativas.
+          </p>
+        </>
+      )}
+    </div>
   );
 }

@@ -213,10 +213,112 @@ test('old activities keep their date and unavailable routes stay private', async
       page.getByRole('button', { name: 'Inscribirme', exact: true }),
     ).toHaveCount(0);
   }
+  // Participants can sign in from the public site; the admin panel stays unlinked.
   await page.goto('/');
   await expect(
     page.getByRole('navigation').getByRole('link', { name: 'Ingresar' }),
-  ).toHaveCount(0);
+  ).toHaveAttribute('href', '/account');
+  await expect(page.locator('a[href^="/admin"]')).toHaveCount(0);
+});
+
+test('participant accounts prefill inscriptions and keep a personal history', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const nav = page.getByRole('navigation');
+  await page.goto('/activities/demo-main');
+  await page.getByRole('link', { name: 'Ingresá', exact: true }).click();
+  await page.getByRole('button', { name: 'Crear cuenta', exact: true }).click();
+  await page.getByLabel('Nombre y apellido').fill('Participante Demo');
+  await page.getByLabel('Email').fill('Participante@Example.com');
+  await page.getByLabel('Contraseña').fill('una-clave-segura');
+  await page.getByRole('button', { name: 'Crear mi cuenta' }).click();
+  // Signing in returns to the activity the participant was viewing.
+  await expect(page).toHaveURL(/\/activities\/demo-main$/);
+  await expect(nav.getByRole('link', { name: 'Mi cuenta' })).toBeVisible();
+  await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Nombre y apellido')).toHaveValue(
+    'Participante Demo',
+  );
+  await expect(dialog.getByLabel('Email *')).toHaveValue(
+    'participante@example.com',
+  );
+  await dialog.getByRole('textbox', { name: 'Teléfono' }).fill('341 555-0000');
+  await dialog
+    .getByLabel('¿Es tu primera experiencia')
+    .selectOption('Sí, es mi primera vez');
+  await expect(dialog.getByLabel('Guardar mi nombre')).toBeChecked();
+  await dialog.getByLabel('Autorizo al Equipo de Inscripciones').check();
+  await dialog
+    .getByRole('button', { name: 'Confirmar mi inscripción' })
+    .click();
+  await expect(dialog.getByText('Tu inscripción fue recibida.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
+  await expect(
+    page.getByText('Ya te inscribiste con tu cuenta.'),
+  ).toBeVisible();
+  await page.getByRole('link', { name: 'Ver mis inscripciones' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Mi cuenta', level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Teléfono')).toHaveValue('341 555-0000');
+  const entry = page.locator('.history-item');
+  await expect(entry).toHaveCount(1);
+  await expect(entry.getByRole('link')).toHaveText('Manos a la Obra 2027');
+  await entry.getByText('Datos enviados el').click();
+  await expect(entry.getByText('Sí, es mi primera vez')).toBeVisible();
+  await page.getByLabel('Nombre y apellido').fill('Participante Actualizada');
+  await page.getByRole('button', { name: 'Guardar mis datos' }).click();
+  await expect(page.getByText('Datos guardados.')).toBeVisible();
+  await nav.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Ingresar a tu cuenta' }),
+  ).toBeVisible();
+  await page.getByLabel('Email').fill('participante@example.com');
+  await page.getByLabel('Contraseña').fill('una-clave-segura');
+  await page.getByRole('button', { name: 'Ingresar', exact: true }).click();
+  await expect(page.getByLabel('Nombre y apellido')).toHaveValue(
+    'Participante Actualizada',
+  );
+  // A second activity uses the updated details.
+  await page.goto('/activities/demo-10');
+  await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
+  await expect(dialog.getByLabel('Nombre y apellido')).toHaveValue(
+    'Participante Actualizada',
+  );
+  await dialog.getByLabel('Autorizo al Equipo de Inscripciones').check();
+  await dialog
+    .getByRole('button', { name: 'Confirmar mi inscripción' })
+    .click();
+  await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
+  // Admins see the account and the person's other inscriptions.
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
+  await page
+    .locator('.admin-event')
+    .filter({ hasText: 'Manos a la Obra 2027' })
+    .getByRole('button', { name: '1 Ver inscripciones' })
+    .click();
+  await expect(
+    dialog.getByRole('row', { name: /Participante Demo/ }).getByRole('cell'),
+  ).toContainText(['Participante Demo', 'participante@example.com', /./, '1']);
+  await dialog
+    .getByRole('button', { name: 'Ver respuestas de Participante Demo' })
+    .click();
+  await expect(dialog.getByText('Se inscribió con su cuenta')).toBeVisible();
+  await expect(
+    dialog.locator('.person-history li').filter({ hasText: 'Misma cuenta' }),
+  ).toContainText('Visita diagnóstica #3');
+  // Leaving the account restores the anonymous form.
+  await page.goto('/');
+  await nav.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await page.goto('/activities/demo-11');
+  await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
+  await expect(dialog.getByLabel('Nombre y apellido')).toHaveValue('');
+  await expect(dialog.getByLabel('Guardar mi nombre')).toHaveCount(0);
+  expect(errors).toEqual([]);
 });
 
 test('manual approval can be configured, requested, filtered and accepted with a reserved place', async ({
@@ -443,13 +545,11 @@ test('a failed document upload shows an error and can be retried with the same f
     .getByLabel('¿Es tu primera experiencia')
     .selectOption('Sí, es mi primera vez');
   await dialog.getByLabel('Autorizo al Equipo de Inscripciones').check();
-  await dialog
-    .getByLabel('Documentos (opcional)')
-    .setInputFiles({
-      name: 'receipt.pdf',
-      mimeType: 'application/pdf',
-      buffer: Buffer.from('%PDF-1.4\nreceipt'),
-    });
+  await dialog.getByLabel('Documentos (opcional)').setInputFiles({
+    name: 'receipt.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\nreceipt'),
+  });
   // Simulate a failure at the browser storage boundary, then restore service.
   await page.evaluate(() => {
     const open = indexedDB.open.bind(indexedDB);

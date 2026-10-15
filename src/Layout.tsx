@@ -3,7 +3,7 @@ import { useData } from './data';
 import { Brand, Modal } from './ui';
 
 // Branding and shell adapted from ~/manos/src/components/{header,footer}.tsx.
-// Authentication links are limited to the private admin area.
+// The public site links only to participant accounts, never to the admin area.
 export function SiteHeader({ children }: { children?: ReactNode }) {
   return (
     <>
@@ -17,6 +17,25 @@ export function SiteHeader({ children }: { children?: ReactNode }) {
       <div className="container site-branding">
         <Brand />
       </div>
+    </>
+  );
+}
+
+export function AccountNav() {
+  const data = useData();
+  return (
+    <>
+      <a href="/">Inicio</a>
+      {data.loading ? null : data.account ? (
+        <>
+          <a href="/account">Mi cuenta</a>
+          <button className="nav-link" onClick={() => void data.signOut()}>
+            Cerrar sesión
+          </button>
+        </>
+      ) : (
+        <a href="/account">Ingresar</a>
+      )}
     </>
   );
 }
@@ -60,12 +79,16 @@ export function SiteFooter() {
             <p>
               También guardamos los documentos que adjuntás, como comprobantes
               de pago o transferencia. Solo el equipo puede descargarlos y se
-              eliminan junto con la inscripción.
+              eliminan junto con la inscripción. La cuenta es opcional. Si creás
+              una, guardamos tu email de acceso, tu contraseña cifrada y los
+              datos que elijas guardar para completar los formularios. Las
+              inscripciones que hacés con tu cuenta forman tu historial.
             </p>
             <p>
               Solo el Equipo de Inscripciones puede consultar las inscripciones.
               Usamos tu email para evitar registros duplicados en una misma
-              actividad. No mostramos públicamente tus datos.
+              actividad. El equipo puede ver tus inscripciones anteriores para
+              organizar las actividades. No mostramos públicamente tus datos.
             </p>
             <p>
               Si necesitás corregir o eliminar una inscripción, contactá al
