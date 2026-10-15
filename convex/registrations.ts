@@ -9,9 +9,10 @@ import {
   type QueryCtx,
   type MutationCtx,
 } from './_generated/server';
-import type { Doc } from './_generated/dataModel';
+import type { Doc, Id } from './_generated/dataModel';
 import { requireAdmin } from './admin';
-import { saveProfileFor } from './participants';
+import { findProfile, saveProfileFor } from './participants';
+import { cycleOf, overviewFor, placementFor } from './zones';
 import { registrationFields, attachmentValidator } from './schema';
 import {
   eventSummary,
@@ -19,6 +20,7 @@ import {
   validateRegistration,
 } from '../src/domain';
 import { validateAttachments } from '../src/attachments';
+import { eventEdition } from '../src/zones';
 const inputValidator = v.object(registrationFields);
 type Submission = Infer<typeof inputValidator>;
 type StoredAttachment = Infer<typeof attachmentValidator>;
@@ -153,10 +155,28 @@ async function otherRegistrations(
   rows.delete(registration._id);
   return [...rows.values()];
 }
+// Account details the team uses to organize people for an activity.
+async function accountSummary(
+  ctx: QueryCtx,
+  userId: Id<'users'>,
+  cycle: Doc<'zoneCycles'> | undefined,
+  edition: number,
+) {
+  const profile = await findProfile(ctx, userId);
+  return {
+    career: profile?.career,
+    graduated: profile?.graduated,
+    emergencyContact: profile?.emergencyContact,
+    zone: await placementFor(ctx, userId, cycle, edition),
+  };
+}
 export const list = query({
   args: { eventId: v.id('events'), paginationOpts: paginationOptsValidator },
   handler: async (ctx, { eventId, paginationOpts }) => {
     await requireAdmin(ctx);
+    const event = await ctx.db.get(eventId);
+    const edition = event ? eventEdition(event) : 0;
+    const cycle = await cycleOf(ctx, edition);
     const result = await ctx.db
       .query('registrations')
       .withIndex('by_event', (q) => q.eq('eventId', eventId))
@@ -172,18 +192,23 @@ export const list = query({
             ({ storageId: _storageId, ...metadata }) => metadata,
           ),
           otherRegistrations: (await otherRegistrations(ctx, row)).length,
+          account: row.userId
+            ? await accountSummary(ctx, row.userId, cycle, edition)
+            : null,
         })),
       ),
     };
   },
 });
-export const history = query({
+// Everything the team knows about the person behind an inscription.
+export const person = query({
   args: { id: v.id('registrations') },
   handler: async (ctx, { id }) => {
     await requireAdmin(ctx);
     const registration = await ctx.db.get(id);
-    if (!registration) return [];
-    const entries = await Promise.all(
+    if (!registration) return null;
+    const event = await ctx.db.get(registration.eventId);
+    const inscriptions = await Promise.all(
       (await otherRegistrations(ctx, registration)).map(async (row) => {
         const event = await ctx.db.get(row.eventId);
         if (!event) return null;
@@ -199,9 +224,15 @@ export const history = query({
         };
       }),
     );
-    return entries
-      .filter((entry) => entry !== null)
-      .sort((a, b) => b.event.date.localeCompare(a.event.date));
+    return {
+      inscriptions: inscriptions
+        .filter((entry) => entry !== null)
+        .sort((a, b) => b.event.date.localeCompare(a.event.date)),
+      zone:
+        registration.userId && event
+          ? await overviewFor(ctx, registration.userId, eventEdition(event))
+          : null,
+    };
   },
 });
 export const attachmentForAdmin = internalQuery({

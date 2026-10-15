@@ -138,7 +138,8 @@ export function RegistrationForm({
           {account ? (
             <p className="muted small">
               Los campos con * son obligatorios. Completamos tus datos con tu
-              cuenta: revisalos antes de confirmar.
+              cuenta: revisalos antes de confirmar. El equipo también verá tus
+              estudios, tu contacto de emergencia y tu barrio.
             </p>
           ) : (
             <p className="muted small">

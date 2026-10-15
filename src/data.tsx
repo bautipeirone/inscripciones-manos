@@ -22,18 +22,35 @@ import {
   type InventoryInput,
 } from './inventory';
 import {
+  assignTarget,
+  assignmentAt,
+  cycleFor,
+  editionOf,
+  eventEdition,
+  requestTarget,
+  validatePastEdition,
+  zoneOverview,
+  type PastEdition,
+  type Zone,
+  type ZoneAssignment,
+  type ZoneCycle,
+  type ZoneOverview,
+} from './zones';
+import {
   eventSummary,
   normalizeEmail,
+  normalizeProfileDetails,
   validateEvent,
   validatePassword,
   validateProfile,
+  validateProfileDetails,
   validateRegistration,
   type Account,
   type Event,
   type EventInput,
   type HistoryEntry,
-  type PersonHistoryEntry,
-  type Profile,
+  type PersonInfo,
+  type ProfileDetails,
   type Registration,
   type RegistrationInput,
   type RegistrationResult,
@@ -56,7 +73,13 @@ type Data = {
     password: string;
   }) => Promise<void>;
   signOut: () => Promise<void>;
-  saveProfile: (profile: Profile) => Promise<void>;
+  saveProfile: (profile: ProfileDetails) => Promise<void>;
+  // The participant's barrio for the current cycle and their history.
+  zone: ZoneOverview | null | undefined;
+  requestZone: (zoneId: string) => Promise<void>;
+  withdrawZoneRequest: () => Promise<void>;
+  addPastEdition: (input: { edition: number; zone: string }) => Promise<void>;
+  removePastEdition: (id: string) => Promise<void>;
   saveEvent: (event: EventInput, id?: string) => Promise<void>;
   availability: (
     event: Event,
@@ -72,7 +95,12 @@ type Data = {
     index: number,
   ) => Promise<void>;
   registrations: (eventId: string) => Promise<Registration[]>;
-  personHistory: (registrationId: string) => Promise<PersonHistoryEntry[]>;
+  person: (registrationId: string) => Promise<PersonInfo | null>;
+  assignZone: (input: {
+    userId: string;
+    zoneId: string;
+    edition: number;
+  }) => Promise<void>;
   removeRegistration: (id: string) => Promise<void>;
   acceptRegistration: (id: string) => Promise<void>;
   inventories: Inventory[] | undefined;
@@ -96,6 +124,7 @@ export function LiveData({ children }: { children: ReactNode }) {
     api.participants.history,
     isAuthenticated ? {} : 'skip',
   );
+  const zone = useQuery(api.zones.mine, isAuthenticated ? {} : 'skip');
   const publicEvents = useQuery(api.events.listPublic);
   const adminEvents = useQuery(api.events.listAdmin, viewer ? {} : 'skip');
   const inventories = useQuery(api.inventories.listAdmin, viewer ? {} : 'skip');
@@ -105,6 +134,11 @@ export function LiveData({ children }: { children: ReactNode }) {
   const update = useMutation(api.events.setAvailability);
   const submit = useMutation(api.registrations.submit);
   const saveProfile = useMutation(api.participants.saveProfile);
+  const requestZone = useMutation(api.zones.request);
+  const withdrawZoneRequest = useMutation(api.zones.withdraw);
+  const addPastEdition = useMutation(api.zones.addPastEdition);
+  const removePastEdition = useMutation(api.zones.removePastEdition);
+  const assignZone = useMutation(api.zones.assign);
   const remove = useMutation(api.registrations.remove);
   const accept = useMutation(api.registrations.accept);
   const saveInventory = useMutation(api.inventories.save);
@@ -149,6 +183,19 @@ export function LiveData({ children }: { children: ReactNode }) {
         signOut: auth.signOut,
         saveProfile: async (profile) => {
           await saveProfile(profile);
+        },
+        zone: isAuthenticated ? zone : null,
+        requestZone: async (zoneId) => {
+          await requestZone({ zoneId: zoneId as Id<'zones'> });
+        },
+        withdrawZoneRequest: async () => {
+          await withdrawZoneRequest({});
+        },
+        addPastEdition: async (input) => {
+          await addPastEdition(input);
+        },
+        removePastEdition: async (id) => {
+          await removePastEdition({ id: id as Id<'pastEditions'> });
         },
         saveEvent: async (event, id) => {
           await save({ event, ...(id ? { id: id as Id<'events'> } : {}) });
@@ -235,10 +282,17 @@ export function LiveData({ children }: { children: ReactNode }) {
           }
           return rows;
         },
-        personHistory: async (registrationId) =>
-          await convex.query(api.registrations.history, {
+        person: async (registrationId) =>
+          await convex.query(api.registrations.person, {
             id: registrationId as Id<'registrations'>,
           }),
+        assignZone: async ({ userId, zoneId, edition }) => {
+          await assignZone({
+            userId: userId as Id<'users'>,
+            zoneId: zoneId as Id<'zones'>,
+            edition,
+          });
+        },
       }}
     >
       {children}
@@ -313,6 +367,24 @@ function seedEvents(): Event[] {
     },
   ];
 }
+// Demo cycles start in 2022, so an edition in 2027 falls in 2025–2027.
+function seedZones(): Pick<DemoState, 'zoneCycles' | 'zones'> {
+  const edition = editionOf(Date.now());
+  const startYear = 2022 + 3 * Math.floor((edition - 2022) / 3);
+  const cycle = {
+    _id: `cycle-${startYear}`,
+    startYear,
+    endYear: startYear + 2,
+  };
+  return {
+    zoneCycles: [cycle],
+    zones: ['Norte', 'Oeste', 'Sur'].map((name) => ({
+      _id: `${cycle._id}-${name.toLowerCase()}`,
+      cycleId: cycle._id,
+      name: `Barrio ${name}`,
+    })),
+  };
+}
 const STORAGE = 'manos-demo-v1';
 type DemoRegistration = Omit<Registration, 'otherRegistrations'>;
 type DemoAccount = Account & { _id: string };
@@ -323,6 +395,10 @@ type DemoState = {
   accounts: DemoAccount[];
   // The signed-in participant account, kept across page loads.
   session: string | null;
+  zoneCycles: ZoneCycle[];
+  zones: Zone[];
+  zoneAssignments: (ZoneAssignment & { userId: string })[];
+  pastEditions: (PastEdition & { userId: string })[];
 };
 function readDemo(): DemoState {
   try {
@@ -335,6 +411,15 @@ function readDemo(): DemoState {
           inventories: Array.isArray(data.inventories) ? data.inventories : [],
           accounts: Array.isArray(data.accounts) ? data.accounts : [],
           session: typeof data.session === 'string' ? data.session : null,
+          ...(Array.isArray(data.zoneCycles) && Array.isArray(data.zones)
+            ? { zoneCycles: data.zoneCycles, zones: data.zones }
+            : seedZones()),
+          zoneAssignments: Array.isArray(data.zoneAssignments)
+            ? data.zoneAssignments
+            : [],
+          pastEditions: Array.isArray(data.pastEditions)
+            ? data.pastEditions
+            : [],
         };
     }
   } catch {
@@ -346,6 +431,9 @@ function readDemo(): DemoState {
     inventories: [],
     accounts: [],
     session: null,
+    ...seedZones(),
+    zoneAssignments: [],
+    pastEditions: [],
   };
 }
 // Mirrors the backend: the same account or, as a hint, the same email.
@@ -368,6 +456,26 @@ export function DemoData({ children }: { children: ReactNode }) {
   }, [data]);
   const account = data.accounts.find((a) => a._id === data.session) ?? null;
   const findEvent = (id: string) => data.events.find((e) => e._id === id);
+  const inscribedEditions = (userId: string) =>
+    data.registrations.flatMap((r) => {
+      const activity = r.userId === userId && findEvent(r.eventId);
+      return activity ? [eventEdition(activity)] : [];
+    });
+  const overview = (userId: string, edition: number) =>
+    zoneOverview({
+      edition,
+      cycles: data.zoneCycles,
+      zones: data.zones,
+      assignments: data.zoneAssignments.filter((a) => a.userId === userId),
+      pastEditions: data.pastEditions.filter((p) => p.userId === userId),
+      inscribedEditions: inscribedEditions(userId),
+    });
+  const zoneWithCycle = (zoneId: string) => {
+    const zone = data.zones.find((z) => z._id === zoneId);
+    const cycle = data.zoneCycles.find((c) => c._id === zone?.cycleId);
+    if (!zone || !cycle) throw new Error('No encontramos el barrio.');
+    return { zone, cycle };
+  };
   return (
     <Context.Provider
       value={{
@@ -452,20 +560,96 @@ export function DemoData({ children }: { children: ReactNode }) {
           setAdmin(null);
           setData((old) => ({ ...old, session: null }));
         },
-        saveProfile: async (profile) => {
+        saveProfile: async (input) => {
           if (!account) throw new Error('Ingresá a tu cuenta.');
-          validateProfile(profile);
+          const profile = normalizeProfileDetails(input);
+          validateProfileDetails(profile);
           setData((old) => ({
             ...old,
             accounts: old.accounts.map((a) =>
               a._id === account._id
                 ? {
-                    ...a,
-                    name: profile.name.trim(),
-                    email: normalizeEmail(profile.email),
-                    phone: profile.phone.trim(),
+                    _id: a._id,
+                    accountEmail: a.accountEmail,
+                    ...profile,
                   }
                 : a,
+            ),
+          }));
+        },
+        zone: account ? overview(account._id, editionOf(Date.now())) : null,
+        requestZone: async (zoneId) => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          const { cycle } = zoneWithCycle(zoneId);
+          const edition = editionOf(Date.now());
+          if (edition < cycle.startYear || cycle.endYear < edition)
+            throw new Error('Ese barrio no corresponde al ciclo actual.');
+          const own = data.zoneAssignments.filter(
+            (a) => a.userId === account._id,
+          );
+          const pending = requestTarget(own, cycle._id);
+          setData((old) => ({
+            ...old,
+            zoneAssignments: pending
+              ? old.zoneAssignments.map((a) =>
+                  a._id === pending._id ? { ...a, zoneId } : a,
+                )
+              : [
+                  ...old.zoneAssignments,
+                  {
+                    _id: crypto.randomUUID(),
+                    userId: account._id,
+                    cycleId: cycle._id,
+                    zoneId,
+                    fromEdition: edition,
+                    status: 'requested',
+                  },
+                ],
+          }));
+        },
+        withdrawZoneRequest: async () => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          const cycle = cycleFor(data.zoneCycles, editionOf(Date.now()));
+          if (!cycle) return;
+          const pending = requestTarget(
+            data.zoneAssignments.filter((a) => a.userId === account._id),
+            cycle._id,
+          );
+          if (!pending) return;
+          setData((old) => ({
+            ...old,
+            zoneAssignments: old.zoneAssignments.filter(
+              (a) => a._id !== pending._id,
+            ),
+          }));
+        },
+        addPastEdition: async (input) => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          validatePastEdition(input, editionOf(Date.now()), [
+            ...data.pastEditions
+              .filter((p) => p.userId === account._id)
+              .map((p) => p.edition),
+            ...inscribedEditions(account._id),
+          ]);
+          setData((old) => ({
+            ...old,
+            pastEditions: [
+              ...old.pastEditions,
+              {
+                _id: crypto.randomUUID(),
+                userId: account._id,
+                edition: input.edition,
+                zone: input.zone.trim(),
+              },
+            ],
+          }));
+        },
+        removePastEdition: async (id) => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          setData((old) => ({
+            ...old,
+            pastEditions: old.pastEditions.filter(
+              (p) => p._id !== id || p.userId !== account._id,
             ),
           }));
         },
@@ -569,19 +753,75 @@ export function DemoData({ children }: { children: ReactNode }) {
         },
         registrations: async (eventId) => {
           if (!admin) throw new Error('Acceso no autorizado.');
+          const activity = findEvent(eventId);
+          const edition = activity ? eventEdition(activity) : 0;
+          const cycle = cycleFor(data.zoneCycles, edition);
+          const summary = (userId: string) => {
+            const owner = data.accounts.find((a) => a._id === userId);
+            const assignment =
+              cycle &&
+              assignmentAt(
+                data.zoneAssignments.filter((a) => a.userId === userId),
+                cycle._id,
+                edition,
+              );
+            const zone = data.zones.find((z) => z._id === assignment?.zoneId);
+            return {
+              career: owner?.career,
+              graduated: owner?.graduated,
+              emergencyContact: owner?.emergencyContact,
+              zone:
+                assignment && zone
+                  ? { name: zone.name, status: assignment.status }
+                  : null,
+            };
+          };
           return data.registrations
             .filter((r) => r.eventId === eventId)
             .reverse()
             .map((r) => ({
               ...r,
               otherRegistrations: othersFrom(data.registrations, r).length,
+              account: r.userId ? summary(r.userId) : null,
             }));
         },
-        personHistory: async (registrationId) => {
+        assignZone: async ({ userId, zoneId, edition }) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          const { cycle } = zoneWithCycle(zoneId);
+          if (edition < cycle.startYear || cycle.endYear < edition)
+            throw new Error('Ese barrio no corresponde a esta edición.');
+          const existing = assignTarget(
+            data.zoneAssignments.filter((a) => a.userId === userId),
+            cycle._id,
+            edition,
+          );
+          setData((old) => ({
+            ...old,
+            zoneAssignments: existing
+              ? old.zoneAssignments.map((a) =>
+                  a._id === existing._id
+                    ? { ...a, zoneId, status: 'confirmed' }
+                    : a,
+                )
+              : [
+                  ...old.zoneAssignments,
+                  {
+                    _id: crypto.randomUUID(),
+                    userId,
+                    cycleId: cycle._id,
+                    zoneId,
+                    fromEdition: edition,
+                    status: 'confirmed',
+                  },
+                ],
+          }));
+        },
+        person: async (registrationId) => {
           if (!admin) throw new Error('Acceso no autorizado.');
           const row = data.registrations.find((r) => r._id === registrationId);
-          if (!row) return [];
-          return othersFrom(data.registrations, row)
+          if (!row) return null;
+          const activity = findEvent(row.eventId);
+          const inscriptions = othersFrom(data.registrations, row)
             .flatMap((r) => {
               const activity = findEvent(r.eventId);
               if (!activity) return [];
@@ -599,6 +839,13 @@ export function DemoData({ children }: { children: ReactNode }) {
               ];
             })
             .sort((a, b) => b.event.date.localeCompare(a.event.date));
+          return {
+            inscriptions,
+            zone:
+              row.userId && activity
+                ? overview(row.userId, eventEdition(activity))
+                : null,
+          };
         },
         acceptRegistration: async (id) => {
           if (!admin) throw new Error('Acceso no autorizado.');

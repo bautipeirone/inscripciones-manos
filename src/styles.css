@@ -546,7 +546,8 @@ textarea::placeholder {
 textarea {
   resize: vertical;
 }
-input[type='checkbox'] {
+input[type='checkbox'],
+input[type='radio'] {
   width: 17px;
   height: 17px;
   flex-shrink: 0;
@@ -1074,9 +1075,185 @@ tr:last-child td {
   padding: 8px 10px;
   font-size: 13px;
 }
-.account-grid {
-  align-items: start;
+.tab-list {
+  display: flex;
+  gap: 4px;
   margin-top: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.tab-list [role='tab'] {
+  margin-bottom: -1px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+.tab-list [role='tab']:hover {
+  color: #374151;
+}
+.tab-list [role='tab'][aria-selected='true'] {
+  border-bottom-color: var(--brand);
+  color: #111827;
+}
+.tab-panel {
+  display: grid;
+  gap: 24px;
+  padding-top: 24px;
+}
+.form-group {
+  min-width: 0;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+}
+.form-group + .form-group {
+  padding-top: 16px;
+  border-top: 1px solid #f3f4f6;
+}
+.form-group legend {
+  margin-bottom: 12px;
+  padding: 0;
+  font-family: var(--font-heading);
+  font-size: 17px;
+  font-weight: 700;
+}
+.form-group legend .optional {
+  font-family: 'Open Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+}
+.form-group > .muted {
+  margin-bottom: 12px;
+}
+.zone-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fafb;
+}
+.panel .zone-card p {
+  font-size: 15px;
+}
+.panel .zone-card p + p {
+  margin-top: 8px;
+}
+.panel .zone-card .zone-cycle {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.zone-card .status {
+  vertical-align: 1px;
+}
+.zone-options {
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+}
+.zone-options legend {
+  margin-bottom: 12px;
+  padding: 0;
+  font-size: 14px;
+}
+.zone-options .checkbox-label {
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+.zone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.zone-history {
+  margin-top: 24px;
+}
+.zone-history h3 {
+  margin-bottom: 12px;
+  font-size: 17px;
+}
+.zone-history ul,
+.zone-admin ul {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.zone-history li {
+  display: grid;
+  grid-template-columns: 48px 1fr auto auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 14px;
+}
+.zone-history li small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.zone-history li .icon-button {
+  padding: 4px;
+}
+.add-past-edition summary {
+  color: #876b0b;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.add-past-edition form {
+  margin-top: 12px;
+}
+.add-past-edition .muted {
+  margin-bottom: 12px;
+}
+.zone-admin {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+.zone-admin h4 {
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+.zone-admin h5 {
+  margin: 16px 0 8px;
+  font-size: 14px;
+}
+.zone-admin li {
+  font-size: 13px;
+}
+.zone-assign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.zone-assign label {
+  flex: 1;
+  min-width: 180px;
+  margin: 0;
+}
+.zone-assign + .muted {
+  margin-top: 8px;
+}
+.panel p.muted {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.panel p.muted.small {
+  font-size: 12px;
 }
 .panel .profile-help {
   margin-bottom: 16px;
@@ -1087,7 +1264,6 @@ tr:last-child td {
 .saved-note {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
   min-height: 20px;
   margin-top: 12px;
@@ -1308,6 +1484,12 @@ tr:last-child td {
   }
   .question-required {
     margin-top: 0;
+  }
+  .zone-history li {
+    grid-template-columns: 48px 1fr auto;
+  }
+  .zone-history li small {
+    grid-column: 2;
   }
   .registrations-toolbar {
     align-items: stretch;

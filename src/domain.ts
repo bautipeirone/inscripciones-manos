@@ -1,4 +1,5 @@
 import type { Attachment } from './attachments';
+import type { ZoneOverview } from './zones';
 export type Question = {
   id: string;
   label: string;
@@ -42,6 +43,7 @@ export type Registration = RegistrationInput & {
   userId?: string;
   // Other inscriptions from the same account or email, for admins only.
   otherRegistrations: number;
+  account?: AccountSummary | null;
 };
 export type RegistrationResult = {
   received: boolean;
@@ -52,7 +54,23 @@ export const registrationStatusLabels = {
   accepted: 'Aceptada',
 };
 export type Profile = { name: string; email: string; phone: string };
-export type Account = Profile & { accountEmail: string };
+export type EmergencyContact = {
+  name: string;
+  relationship: string;
+  phone: string;
+};
+// Saved in the account only; inscriptions copy just the contact details.
+export type ProfileDetails = Profile & {
+  career?: string;
+  // Meaningful only with a career: graduated, or still studying.
+  graduated?: boolean;
+  emergencyContact?: EmergencyContact;
+};
+export type Account = ProfileDetails & { accountEmail: string };
+// What admins see next to an inscription made with an account.
+export type AccountSummary = Omit<ProfileDetails, keyof Profile> & {
+  zone: { name: string; status: 'requested' | 'confirmed' } | null;
+};
 export type EventSummary = Pick<
   Event,
   | '_id'
@@ -75,6 +93,12 @@ export type HistoryEntry = {
   phone: string;
   answers: { label: string; value: string }[];
   attachments: Attachment[];
+};
+// What admins see about the person behind an inscription.
+export type PersonInfo = {
+  inscriptions: PersonHistoryEntry[];
+  // Only for inscriptions made with an account.
+  zone: ZoneOverview | null;
 };
 // Another inscription by the same person, as shown to admins.
 export type PersonHistoryEntry = {
@@ -197,6 +221,36 @@ export function validateProfile(input: Profile) {
   )
     throw new Error('Ingresá un email válido.');
   if (input.phone.length > 40) throw new Error('Revisá el número de teléfono.');
+}
+export function normalizeProfileDetails(input: ProfileDetails): ProfileDetails {
+  const career = input.career?.trim();
+  const contact = input.emergencyContact && {
+    name: input.emergencyContact.name.trim(),
+    relationship: input.emergencyContact.relationship.trim(),
+    phone: input.emergencyContact.phone.trim(),
+  };
+  return {
+    name: input.name.trim(),
+    email: normalizeEmail(input.email),
+    phone: input.phone.trim(),
+    ...(career ? { career, graduated: input.graduated === true } : {}),
+    ...(contact && (contact.name || contact.relationship || contact.phone)
+      ? { emergencyContact: contact }
+      : {}),
+  };
+}
+export function validateProfileDetails(input: ProfileDetails) {
+  validateProfile(input);
+  if (input.career !== undefined && input.career.length > 120)
+    throw new Error('La carrera puede tener hasta 120 caracteres.');
+  const contact = input.emergencyContact;
+  if (!contact) return;
+  if (contact.name.trim().length < 2 || contact.name.length > 120)
+    throw new Error('Ingresá el nombre de tu contacto de emergencia.');
+  if (!contact.relationship.trim() || contact.relationship.length > 60)
+    throw new Error('Indicá tu vínculo con el contacto de emergencia.');
+  if (!contact.phone.trim() || contact.phone.length > 40)
+    throw new Error('Ingresá el teléfono de tu contacto de emergencia.');
 }
 export function validatePassword(password: string) {
   if (password.length < 8 || password.length > 128)

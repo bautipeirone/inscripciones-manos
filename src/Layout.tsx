@@ -79,10 +79,15 @@ export function SiteFooter() {
             <p>
               También guardamos los documentos que adjuntás, como comprobantes
               de pago o transferencia. Solo el equipo puede descargarlos y se
-              eliminan junto con la inscripción. La cuenta es opcional. Si creás
-              una, guardamos tu email de acceso, tu contraseña cifrada y los
-              datos que elijas guardar para completar los formularios. Las
-              inscripciones que hacés con tu cuenta forman tu historial.
+              eliminan junto con la inscripción.
+            </p>
+            <p>
+              La cuenta es opcional. Si creás una, guardamos tu email de acceso,
+              tu contraseña cifrada y los datos que elijas completar: contacto,
+              estudios, contacto de emergencia y los barrios a los que fuiste.
+              Las inscripciones que hacés con tu cuenta forman tu historial, y
+              el equipo usa estos datos para organizar los grupos de cada
+              barrio.
             </p>
             <p>
               Solo el Equipo de Inscripciones puede consultar las inscripciones.

@@ -17,6 +17,7 @@ import type * as http from "../http.js";
 import type * as inventories from "../inventories.js";
 import type * as participants from "../participants.js";
 import type * as registrations from "../registrations.js";
+import type * as zones from "../zones.js";
 
 import type {
   ApiFromModules,
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   inventories: typeof inventories;
   participants: typeof participants;
   registrations: typeof registrations;
+  zones: typeof zones;
 }>;
 
 /**

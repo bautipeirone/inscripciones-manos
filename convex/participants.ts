@@ -7,21 +7,23 @@ import {
   type QueryCtx,
 } from './_generated/server';
 import type { Id } from './_generated/dataModel';
-import { profileFields } from './schema';
+import { profileDetailFields, profileFields } from './schema';
 import {
   eventSummary,
   normalizeEmail,
-  validateProfile,
+  normalizeProfileDetails,
+  validateProfileDetails,
   type Profile,
 } from '../src/domain';
 
 // Every function here reads the user from the session, never from arguments,
 // so a participant can only reach their own profile and inscriptions.
-const findProfile = (ctx: QueryCtx, userId: Id<'users'>) =>
+export const findProfile = (ctx: QueryCtx, userId: Id<'users'>) =>
   ctx.db
     .query('profiles')
     .withIndex('by_user', (q) => q.eq('userId', userId))
     .unique();
+// Updates only the contact details copied into inscriptions.
 export async function saveProfileFor(
   ctx: MutationCtx,
   userId: Id<'users'>,
@@ -50,20 +52,33 @@ export const viewer = query({
       name: profile?.name ?? user.name ?? '',
       email: profile?.email ?? user.email ?? '',
       phone: profile?.phone ?? '',
+      career: profile?.career,
+      graduated: profile?.graduated,
+      emergencyContact: profile?.emergencyContact,
     };
   },
 });
 export const saveProfile = mutation({
-  args: profileFields,
+  args: { ...profileFields, ...profileDetailFields },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new ConvexError('Ingresá a tu cuenta.');
+    const profile = normalizeProfileDetails(args);
     try {
-      validateProfile(args);
+      validateProfileDetails(profile);
     } catch (e) {
       throw new ConvexError((e as Error).message);
     }
-    await saveProfileFor(ctx, userId, args);
+    const existing = await findProfile(ctx, userId);
+    // Explicit undefined values clear optional details the person removed.
+    if (existing)
+      await ctx.db.patch(existing._id, {
+        career: undefined,
+        graduated: undefined,
+        emergencyContact: undefined,
+        ...profile,
+      });
+    else await ctx.db.insert('profiles', { userId, ...profile });
   },
 });
 export const history = query({

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   // Stable clock for seed dates, deadline labels and deterministic forms.
@@ -263,12 +264,19 @@ test('participant accounts prefill inscriptions and keep a personal history', as
   await expect(
     page.getByRole('heading', { name: 'Mi cuenta', level: 1 }),
   ).toBeVisible();
-  await expect(page.getByLabel('Teléfono')).toHaveValue('341 555-0000');
+  await expect(
+    page.getByRole('tab', { name: 'Mis inscripciones' }),
+  ).toHaveAttribute('aria-selected', 'true');
   const entry = page.locator('.history-item');
   await expect(entry).toHaveCount(1);
   await expect(entry.getByRole('link')).toHaveText('Manos a la Obra 2027');
   await entry.getByText('Datos enviados el').click();
   await expect(entry.getByText('Sí, es mi primera vez')).toBeVisible();
+  await page.getByRole('tab', { name: 'Mis datos' }).click();
+  await expect(page).toHaveURL(/\/account#datos$/);
+  await expect(
+    page.getByRole('textbox', { name: 'Teléfono (opcional)' }),
+  ).toHaveValue('341 555-0000');
   await page.getByLabel('Nombre y apellido').fill('Participante Actualizada');
   await page.getByRole('button', { name: 'Guardar mis datos' }).click();
   await expect(page.getByText('Datos guardados.')).toBeVisible();
@@ -572,4 +580,100 @@ test('a failed document upload shows an error and can be retried with the same f
     .getByRole('button', { name: 'Confirmar mi inscripción' })
     .click();
   await expect(dialog.getByText('Tu inscripción fue recibida.')).toBeVisible();
+});
+
+test('studies, emergency contact and barrio choice reach the team, which confirms the barrio', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/account');
+  await page.getByRole('button', { name: 'Crear cuenta', exact: true }).click();
+  await page.getByLabel('Nombre y apellido').fill('Persona Barrio');
+  await page.getByLabel('Email').fill('barrio@example.com');
+  await page.getByLabel('Contraseña').fill('una-clave-segura');
+  await page.getByRole('button', { name: 'Crear mi cuenta' }).click();
+  // New accounts open on their details; the tabs follow the arrow keys.
+  const dataTab = page.getByRole('tab', { name: 'Mis datos' });
+  const inscriptionsTab = page.getByRole('tab', { name: 'Mis inscripciones' });
+  await expect(dataTab).toHaveAttribute('aria-selected', 'true');
+  await dataTab.press('ArrowLeft');
+  await expect(inscriptionsTab).toBeFocused();
+  await expect(inscriptionsTab).toHaveAttribute('aria-selected', 'true');
+  await inscriptionsTab.press('ArrowRight');
+  await expect(dataTab).toHaveAttribute('aria-selected', 'true');
+  await page.getByLabel('Carrera').fill('Arquitectura');
+  await page.getByLabel('Ya me recibí').check();
+  await page.getByLabel('Nombre del contacto').fill('Marta Pérez');
+  await page.getByRole('button', { name: 'Guardar mis datos' }).click();
+  await expect(page.getByRole('alert')).toContainText('vínculo');
+  await page.getByLabel('Vínculo').fill('Madre');
+  await page.getByLabel('Teléfono del contacto').fill('341 555-0000');
+  await page.getByRole('button', { name: 'Guardar mis datos' }).click();
+  await expect(page.getByText('Datos guardados.')).toBeVisible();
+  const barrio = page.getByRole('region', { name: 'Barrio' });
+  await expect(barrio).toContainText('Edición 2027 · Ciclo 2025–2027');
+  await barrio.getByLabel('Barrio Oeste').check();
+  await barrio.getByRole('button', { name: 'Enviar mi elección' }).click();
+  await expect(barrio).toContainText('Elegiste Barrio Oeste');
+  await expect(barrio.getByText('Pendiente de confirmación')).toBeVisible();
+  await barrio.getByText('Agregar una edición anterior').click();
+  await barrio.getByLabel('Edición').selectOption('2019');
+  await barrio
+    .getByRole('textbox', { name: 'Barrio', exact: true })
+    .fill('Barrio Las Flores');
+  await barrio.getByRole('button', { name: 'Agregar edición' }).click();
+  await expect(
+    barrio.locator('.zone-history li').filter({ hasText: '2019' }),
+  ).toContainText('Informada por vos');
+  await page.reload();
+  await expect(page.getByLabel('Carrera')).toHaveValue('Arquitectura');
+  await page.goto('/activities/demo-main');
+  await page.getByRole('button', { name: 'Inscribirme', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('El equipo también verá tus estudios');
+  await dialog
+    .getByLabel('¿Es tu primera experiencia')
+    .selectOption('Ya participé antes');
+  await dialog.getByLabel('Autorizo al Equipo de Inscripciones').check();
+  await dialog
+    .getByRole('button', { name: 'Confirmar mi inscripción' })
+    .click();
+  await dialog.getByRole('button', { name: 'Listo', exact: true }).click();
+  // The team sees the details and confirms the barrio for this edition.
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'Explorar panel de prueba' }).click();
+  await page
+    .locator('.admin-event')
+    .filter({ hasText: 'Manos a la Obra 2027' })
+    .getByRole('button', { name: '1 Ver inscripciones' })
+    .click();
+  await expect(
+    dialog.getByRole('cell', { name: 'Barrio Oeste (elegido)' }),
+  ).toBeVisible();
+  await dialog
+    .getByRole('button', { name: 'Ver respuestas de Persona Barrio' })
+    .click();
+  await expect(dialog).toContainText('Arquitectura · Ya se recibió');
+  await expect(dialog).toContainText('Marta Pérez (Madre) · 341 555-0000');
+  const zone = dialog.locator('.zone-admin');
+  await expect(zone).toContainText('Eligió Barrio Oeste');
+  await expect(zone).toContainText(
+    '2019 · Barrio Las Flores (informado por la persona)',
+  );
+  await zone.getByRole('button', { name: 'Confirmar barrio' }).click();
+  await expect(zone).toContainText('Barrio Oeste · confirmado');
+  await expect(
+    dialog.getByRole('cell', { name: 'Barrio Oeste', exact: true }),
+  ).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'Exportar CSV' }).click();
+  const csv = await readFile(await (await downloadPromise).path(), 'utf8');
+  expect(csv).toContain('"Contacto de emergencia"');
+  expect(csv).toContain('"Marta Pérez","Madre","341 555-0000","Barrio Oeste"');
+  await page.goto('/account#datos');
+  await expect(page.getByRole('region', { name: 'Barrio' })).toContainText(
+    'Tu barrio: Barrio Oeste Confirmado',
+  );
+  expect(errors).toEqual([]);
 });

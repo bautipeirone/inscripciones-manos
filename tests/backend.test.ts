@@ -152,7 +152,7 @@ describe('admin boundary', () => {
       async (ctx) => (await ctx.db.query('registrations').first())!._id,
     );
     await expect(
-      participant.query(api.registrations.history, { id }),
+      participant.query(api.registrations.person, { id }),
     ).rejects.toThrow('Acceso no autorizado');
     await expect(
       participant.mutation(api.registrations.remove, { id }),
@@ -344,10 +344,12 @@ describe('participant accounts', () => {
       paginationOpts: { numItems: 100, cursor: null },
     });
     expect(rows.page[0].otherRegistrations).toBe(2);
-    const history = await admin.query(api.registrations.history, {
+    const person = await admin.query(api.registrations.person, {
       id: rows.page[0]._id,
     });
-    expect(history.map((h) => [h.event.title, h.match]).sort()).toEqual([
+    expect(
+      person!.inscriptions.map((h) => [h.event.title, h.match]).sort(),
+    ).toEqual([
       ['Segunda jornada', 'account'],
       ['Tercera jornada', 'email'],
     ]);
@@ -398,7 +400,8 @@ describe('participant accounts with manual approval', () => {
       })
     ).page;
     expect(
-      await admin.query(api.registrations.history, { id: accepted._id }),
+      (await admin.query(api.registrations.person, { id: accepted._id }))!
+        .inscriptions,
     ).toMatchObject([
       { event: { title: event.title }, status: 'pending', match: 'account' },
     ]);

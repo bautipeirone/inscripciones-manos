@@ -19,8 +19,10 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 - Inscripción sin cuenta, con nombre, email, teléfono opcional y consentimiento.
 - Documentos opcionales en las inscripciones: hasta tres comprobantes PDF, JPEG o PNG de 5 MB cada uno, con descarga privada para administradores y eliminación junto con la inscripción.
 - Aprobación manual opcional por actividad: las nuevas solicitudes quedan pendientes y el administrador puede aceptarlas desde el detalle, filtrarlas por estado y exportar su estado a CSV.
-- Cuentas opcionales de participantes en `/account`: registro, ingreso y cierre de sesión desde el sitio público. Guardan nombre, email de contacto y teléfono para completar los formularios; la persona los revisa y puede cambiarlos antes de cada envío. La página de la cuenta muestra sus inscripciones próximas y anteriores, con su estado de aprobación, los datos y respuestas enviados y los nombres de los documentos adjuntos.
-- En `/admin`, cada inscripción indica si se hizo con cuenta y cuántas otras inscripciones tiene la misma persona (por cuenta o por email). El detalle lista esas actividades para organizar los grupos; el CSV incluye ambas columnas.
+- Cuentas opcionales de participantes en `/account`: registro, ingreso y cierre de sesión desde el sitio público. La página tiene dos pestañas:
+  - **Mis inscripciones**: inscripciones próximas y anteriores, con su estado de aprobación, los datos y respuestas enviados y los nombres de los documentos adjuntos.
+  - **Mis datos** (`/account#datos`): nombre, email de contacto y teléfono, que completan los formularios y se pueden cambiar antes de cada envío; carrera opcional y si ya se recibió o sigue estudiando; contacto de emergencia (nombre, vínculo y teléfono); y el barrio del ciclo actual con el historial de barrios por edición (ver [Barrios](#barrios)).
+- En `/admin`, cada inscripción indica si se hizo con cuenta, cuántas otras inscripciones tiene la misma persona (por cuenta o por email) y su barrio para la edición de la actividad. El detalle muestra estudios, contacto de emergencia, esas otras actividades y los barrios por edición, y permite confirmar, asignar o cambiar el barrio. El CSV incluye todos esos datos.
 - Formularios con preguntas cortas, largas o de selección; campos obligatorios configurables.
 - Un registro por email normalizado y evento. Una persona puede participar en varios eventos. Los reintentos no reemplazan respuestas anteriores.
 - Visibilidad y recepción de inscripciones independientes. Los formularios ocultos no aparecen en las consultas públicas y rechazan nuevas inscripciones.
@@ -41,7 +43,25 @@ Las cuentas de participantes se reimplementaron sobre Convex Auth. La verificaci
 
 Los nuevos formularios requieren horarios de inicio/finalización e indicaciones. Las actividades existentes sin esos campos siguen disponibles y muestran **Horario a confirmar**. Al editarlas, el equipo debe completar esos datos. No se asignan horarios ficticios a las actividades guardadas ni se borran inscripciones de la demo.
 
-Después de actualizar el código, ejecutá `npx convex dev` para desarrollo o `npx convex deploy` para producción antes de publicar el frontend, porque el esquema agrega `startAt`, `endAt` e `instructions` como campos opcionales para conservar registros anteriores. Las cuentas de participantes agregan la tabla `profiles` y el campo opcional `userId` en `registrations`; las inscripciones anteriores quedan sin cuenta y no requieren migración.
+Después de actualizar el código, ejecutá `npx convex dev` para desarrollo o `npx convex deploy` para producción antes de publicar el frontend, porque el esquema agrega `startAt`, `endAt` e `instructions` como campos opcionales para conservar registros anteriores. Las cuentas de participantes agregan la tabla `profiles` y el campo opcional `userId` en `registrations`; las inscripciones anteriores quedan sin cuenta y no requieren migración. Los barrios agregan las tablas `zoneCycles`, `zones`, `zoneAssignments` y `pastEditions`, y los perfiles suman campos opcionales; tampoco requieren migración.
+
+## Barrios
+
+Cada ciclo de ediciones (por ejemplo, 2025–2027) trabaja en un grupo de barrios. La plataforma lo modela así:
+
+- **Edición**: lleva el año del Manos a la Obra de enero. Las visitas diagnósticas de agosto a diciembre preparan el enero siguiente, así que pertenecen a la edición siguiente (las visitas de octubre de 2026 son de la edición 2027). La regla está en `editionOf` (`src/zones.ts`).
+- **Ciclo**: un rango de ediciones con su propio grupo de barrios. No está fijo en tres años ni en tres barrios.
+- **Asignación**: el barrio de una persona en un ciclo, desde una edición en adelante. La persona puede elegir un barrio la primera vez en el ciclo; queda **pendiente** hasta que el equipo la confirma o asigna otro. Si no elige, el equipo le asigna uno. Después de la confirmación sigue en el mismo barrio durante todo el ciclo, aunque no participe un año.
+- **Cambios**: el equipo puede mover a alguien desde una edición; las ediciones anteriores conservan el barrio al que fue.
+- **Historial por edición**: se arma con las ediciones en las que la cuenta tiene inscripciones y el barrio vigente en cada una. Un año sin inscripciones no aparece. Para ediciones anteriores a la plataforma, cada persona puede agregar el año y el barrio; el equipo los ve como «informados por la persona».
+
+El equipo confirma, asigna o cambia barrios desde el detalle de cada inscripción en `/admin`. Todavía no hay un panel para cargar ciclos ni para repartir a muchas personas a la vez; se usarán las mismas tablas y la misma acción `zones:assign`. Mientras tanto, cargá cada ciclo con acceso de desarrollador:
+
+```bash
+npx convex run zones:createCycle '{"startYear":2025,"endYear":2027,"zones":["Barrio A","Barrio B","Barrio C"]}'
+```
+
+Usá `--prod` para producción y reemplazá los nombres por los barrios reales. Los ciclos no pueden superponerse. Sin un ciclo cargado para la edición actual, la cuenta indica que los barrios todavía no están disponibles.
 
 La función de inventarios agrega la tabla `inventories` y las operaciones privadas `inventories:listAdmin`, `inventories:save` e `inventories:remove`. Desplegá también estos cambios de backend antes de publicar el frontend. No requiere migrar actividades ni inscripciones existentes. La demo conserva sus datos anteriores y empieza con una lista de inventarios vacía.
 
@@ -230,7 +250,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Las pruebas de backend usan `convex-test` y comprueban permisos, cuentas de participantes sin acceso administrativo, aislamiento del historial y los perfiles, historial para administradores, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción con y sin cuenta, datos precargados, historial personal, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales, unidades opcionales e importación de CSV y archivos Excel reales. Las pruebas del lector también cubren fechas, comillas, saltos de línea, límites y rechazo de archivos inválidos.
+Las pruebas de backend usan `convex-test` y comprueban permisos, cuentas de participantes sin acceso administrativo, aislamiento del historial y los perfiles, historial para administradores, datos de estudios y contacto de emergencia, ediciones, elección y confirmación de barrios, continuidad dentro del ciclo, años salteados, cambios de barrio, ediciones informadas, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción con y sin cuenta, datos precargados, historial personal, pestañas de la cuenta, datos personales, elección y confirmación de barrios, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales, unidades opcionales e importación de CSV y archivos Excel reales. Las pruebas del lector también cubren fechas, comillas, saltos de línea, límites y rechazo de archivos inválidos.
 
 Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay un backend configurado, ejecutá Vite con `VITE_CONVEX_URL='' npm run dev -- --port 5173` antes de la prueba.
 
@@ -239,7 +259,8 @@ Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay 
 - `src/App.tsx`: listado público y detalle de actividades.
 - `src/Layout.tsx`: encabezado, pie institucional y privacidad.
 - `src/RegistrationForm.tsx`: formulario de inscripción, con datos precargados si hay una cuenta.
-- `src/Account.tsx`: ingreso, registro, datos guardados e historial de participantes.
+- `src/Account.tsx`: ingreso, registro y pestañas de inscripciones y datos de participantes, incluido el barrio.
+- `src/zones.ts`: ediciones, ciclos y reglas de barrios compartidas por Convex y la demo.
 - `src/Admin.tsx`: acceso privado, editor y consulta de participantes.
 - `src/Inventories.tsx`: lista, editor y detalle de inventarios en el panel administrativo.
 - `src/inventory.ts`: tipos y validación compartida de inventarios.
