@@ -153,6 +153,17 @@ a:focus-visible {
 .nav-link:hover {
   text-decoration: underline;
 }
+.text-button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--brand-950);
+  text-decoration: underline;
+}
+.form-error {
+  color: #a11a1a;
+  font-size: 14px;
+}
 .demo-bar {
   display: flex;
   flex-wrap: wrap;
