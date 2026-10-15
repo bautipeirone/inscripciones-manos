@@ -52,24 +52,76 @@ export const inventoryFields = {
     }),
   ),
 };
+export const profileFields = {
+  name: v.string(),
+  email: v.string(),
+  phone: v.string(),
+};
+export const profileDetailFields = {
+  career: v.optional(v.string()),
+  graduated: v.optional(v.boolean()),
+  emergencyContact: v.optional(
+    v.object({ name: v.string(), relationship: v.string(), phone: v.string() }),
+  ),
+};
+export const zoneStatus = v.union(
+  v.literal('requested'),
+  v.literal('confirmed'),
+);
 export default defineSchema({
   ...authTables,
   admins: defineTable({ userId: v.id('users') }).index('by_user', ['userId']),
   inventories: defineTable(inventoryFields).index('by_date', ['date']),
+  // Personal details a participant saves to prefill inscription forms.
+  profiles: defineTable({
+    userId: v.id('users'),
+    ...profileFields,
+    ...profileDetailFields,
+  }).index('by_user', ['userId']),
+  // Editions (named after their January) that share a set of barrios.
+  zoneCycles: defineTable({ startYear: v.number(), endYear: v.number() }).index(
+    'by_start',
+    ['startYear'],
+  ),
+  zones: defineTable({ cycleId: v.id('zoneCycles'), name: v.string() }).index(
+    'by_cycle',
+    ['cycleId'],
+  ),
+  // A person's barrio in a cycle from one edition on. Moving someone adds a
+  // row from a later edition, so earlier editions keep their barrio.
+  zoneAssignments: defineTable({
+    userId: v.id('users'),
+    cycleId: v.id('zoneCycles'),
+    zoneId: v.id('zones'),
+    fromEdition: v.number(),
+    status: zoneStatus,
+  })
+    .index('by_user', ['userId', 'cycleId', 'fromEdition'])
+    .index('by_cycle_status', ['cycleId', 'status'])
+    .index('by_zone', ['zoneId']),
+  // Editions before the platform, as reported by the participant.
+  pastEditions: defineTable({
+    userId: v.id('users'),
+    edition: v.number(),
+    zone: v.string(),
+  }).index('by_user', ['userId', 'edition']),
   events: defineTable({ ...eventFields, registrationCount: v.number() }).index(
     'by_visible',
     ['visible'],
   ),
   registrations: defineTable({
     eventId: v.id('events'),
-    name: v.string(),
-    email: v.string(),
-    phone: v.string(),
+    ...profileFields,
     answers: v.record(v.string(), v.string()),
     consent: v.boolean(),
     attachments: v.optional(v.array(attachmentValidator)),
     status: v.optional(v.union(v.literal('pending'), v.literal('accepted'))),
+    // Set only when submitted from a signed-in session; never inferred from
+    // the email, which is not verified.
+    userId: v.optional(v.id('users')),
   })
     .index('by_event', ['eventId'])
-    .index('by_event_email', ['eventId', 'email']),
+    .index('by_event_email', ['eventId', 'email'])
+    .index('by_email', ['email'])
+    .index('by_user_event', ['userId', 'eventId']),
 });
