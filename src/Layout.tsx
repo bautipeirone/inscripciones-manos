@@ -43,19 +43,27 @@ export function SiteHeader({ children }: { children?: ReactNode }) {
   );
 }
 
-function AccountModal({ onClose }: { onClose: () => void }) {
+function AccountModal({ onClose }: { readonly onClose: () => void }) {
   const data = useData();
   const [mode, setMode] = useState<'signIn' | 'signUp' | 'profile'>(
     data.participant ? 'profile' : 'signIn',
   );
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const title =
-    mode === 'signIn'
-      ? 'Ingresar'
-      : mode === 'signUp'
-        ? 'Crear cuenta'
-        : 'Mis datos';
+  const title = {
+    signIn: 'Ingresar',
+    signUp: 'Crear cuenta',
+    profile: 'Mis datos',
+  }[mode];
+  const submitLabel = busy
+    ? 'Guardando…'
+    : { signIn: 'Ingresar', signUp: 'Crear cuenta', profile: 'Guardar datos' }[
+        mode
+      ];
+  const getFormValue = (form: FormData, name: string) => {
+    const value = form.get(name);
+    return typeof value === 'string' ? value : '';
+  };
   return (
     <Modal title={title} onClose={onClose}>
       {mode !== 'profile' && (
@@ -70,14 +78,14 @@ function AccountModal({ onClose }: { onClose: () => void }) {
             try {
               if (mode === 'signIn')
                 await data.signIn(
-                  String(form.get('email')),
-                  String(form.get('password')),
+                  getFormValue(form, 'email'),
+                  getFormValue(form, 'password'),
                 );
               else
                 await data.signUp(
-                  String(form.get('name')),
-                  String(form.get('email')),
-                  String(form.get('password')),
+                  getFormValue(form, 'name'),
+                  getFormValue(form, 'email'),
+                  getFormValue(form, 'password'),
                 );
               onClose();
             } catch (err) {
@@ -89,16 +97,16 @@ function AccountModal({ onClose }: { onClose: () => void }) {
         >
           {mode === 'signUp' && (
             <label>
-              Nombre y apellido *
+              Nombre y apellido *{' '}
               <input name="name" autoComplete="name" required minLength={2} />
             </label>
           )}
           <label>
-            Email *
+            Email *{' '}
             <input name="email" type="email" autoComplete="email" required />
           </label>
           <label>
-            Contraseña *
+            Contraseña *{' '}
             <input
               name="password"
               type="password"
@@ -114,12 +122,8 @@ function AccountModal({ onClose }: { onClose: () => void }) {
               {error}
             </p>
           )}
-          <button className="button full-width" disabled={busy}>
-            {busy
-              ? 'Guardando…'
-              : mode === 'signIn'
-                ? 'Ingresar'
-                : 'Crear cuenta'}
+          <button type="submit" className="button full-width" disabled={busy}>
+            {submitLabel}
           </button>
           <button
             type="button"
@@ -142,9 +146,9 @@ function AccountModal({ onClose }: { onClose: () => void }) {
             const form = new FormData(event.currentTarget);
             try {
               await data.saveParticipant({
-                name: String(form.get('name')),
-                email: String(form.get('email')),
-                phone: String(form.get('phone')),
+                name: getFormValue(form, 'name'),
+                email: getFormValue(form, 'email'),
+                phone: getFormValue(form, 'phone'),
               });
               onClose();
             } catch (err) {
@@ -158,11 +162,11 @@ function AccountModal({ onClose }: { onClose: () => void }) {
             Estos datos se completan automáticamente en tus inscripciones.
           </p>
           <label>
-            Nombre y apellido *
+            Nombre y apellido *{' '}
             <input name="name" defaultValue={data.participant.name} required />
           </label>
           <label>
-            Email *
+            Email *{' '}
             <input
               name="email"
               type="email"
@@ -171,7 +175,7 @@ function AccountModal({ onClose }: { onClose: () => void }) {
             />
           </label>
           <label>
-            Teléfono <span className="optional">(opcional)</span>
+            Teléfono <span className="optional">(opcional)</span>{' '}
             <input
               name="phone"
               type="tel"
@@ -183,7 +187,7 @@ function AccountModal({ onClose }: { onClose: () => void }) {
               {error}
             </p>
           )}
-          <button className="button full-width" disabled={busy}>
+          <button type="submit" className="button full-width" disabled={busy}>
             {busy ? 'Guardando…' : 'Guardar datos'}
           </button>
         </form>

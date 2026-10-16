@@ -357,17 +357,19 @@ export function DemoData({ children }: { children: ReactNode }) {
         signIn: async () => {
           setAdmin({ name: 'Equipo Manos', email: 'demo@manos.local' });
         },
-        signUp: async (name, email) => {
+        signUp: (name, email) => {
           setParticipant({ name, email, phone: '' });
+          return Promise.resolve();
         },
         signOut: async () => {
           setAdmin(null);
           setParticipant(null);
         },
-        saveParticipant: async (profile) => {
+        saveParticipant: (profile) => {
           if (!participant)
             throw new Error('Iniciá sesión para guardar tus datos.');
           setParticipant(profile);
+          return Promise.resolve();
         },
         saveEvent: async (event, id) => {
           if (!admin) throw new Error('Ingresá a la administración.');

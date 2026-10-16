@@ -40,7 +40,17 @@ export const saveProfile = mutation({
     const phone = input.phone.trim();
     if (name.length < 2 || name.length > 120)
       throw new ConvexError('Escribí un nombre de hasta 120 caracteres.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
+    const [localPart, domain, ...extraParts] = email.split('@');
+    const dotIndex = domain?.indexOf('.') ?? -1;
+    if (
+      !localPart ||
+      !domain ||
+      extraParts.length > 0 ||
+      /\s/.test(email) ||
+      dotIndex <= 0 ||
+      dotIndex === domain.length - 1 ||
+      email.length > 254
+    )
       throw new ConvexError('Escribí un email válido.');
     if (phone.length > 40)
       throw new ConvexError('El teléfono no puede superar los 40 caracteres.');
