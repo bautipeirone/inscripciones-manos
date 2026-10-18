@@ -1,198 +1,42 @@
 import { useState, type ReactNode } from 'react';
 import { useData } from './data';
-import { Brand, Modal, errorMessage } from './ui';
+import { Brand, Modal } from './ui';
 
 // Branding and shell adapted from ~/manos/src/components/{header,footer}.tsx.
+// The public site links only to participant accounts, never to the admin area.
 export function SiteHeader({ children }: { children?: ReactNode }) {
-  const data = useData();
-  const [accountOpen, setAccountOpen] = useState(false);
   return (
     <>
       <header className="site-header">
         <div className="container header-inner">
           <nav aria-label="Navegación principal">
             {children ?? <a href="/">Inicio</a>}
-            {data.participant ? (
-              <>
-                <button
-                  className="nav-link"
-                  onClick={() => setAccountOpen(true)}
-                >
-                  Mi cuenta
-                </button>
-                <button
-                  className="nav-link"
-                  onClick={() => void data.signOut()}
-                >
-                  Cerrar sesión
-                </button>
-              </>
-            ) : (
-              <button className="nav-link" onClick={() => setAccountOpen(true)}>
-                Ingresar
-              </button>
-            )}
           </nav>
         </div>
       </header>
       <div className="container site-branding">
         <Brand />
       </div>
-      {accountOpen && <AccountModal onClose={() => setAccountOpen(false)} />}
     </>
   );
 }
 
-function AccountModal({ onClose }: { readonly onClose: () => void }) {
+export function AccountNav() {
   const data = useData();
-  const [mode, setMode] = useState<'signIn' | 'signUp' | 'profile'>(
-    data.participant ? 'profile' : 'signIn',
-  );
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const title = {
-    signIn: 'Ingresar',
-    signUp: 'Crear cuenta',
-    profile: 'Mis datos',
-  }[mode];
-  const submitLabel = busy
-    ? 'Guardando…'
-    : { signIn: 'Ingresar', signUp: 'Crear cuenta', profile: 'Guardar datos' }[
-        mode
-      ];
-  const getFormValue = (form: FormData, name: string) => {
-    const value = form.get(name);
-    return typeof value === 'string' ? value : '';
-  };
   return (
-    <Modal title={title} onClose={onClose}>
-      {mode !== 'profile' && (
-        <form
-          className="registration-form"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            if (busy) return;
-            setBusy(true);
-            setError('');
-            const form = new FormData(event.currentTarget);
-            try {
-              if (mode === 'signIn')
-                await data.signIn(
-                  getFormValue(form, 'email'),
-                  getFormValue(form, 'password'),
-                );
-              else
-                await data.signUp(
-                  getFormValue(form, 'name'),
-                  getFormValue(form, 'email'),
-                  getFormValue(form, 'password'),
-                );
-              onClose();
-            } catch (err) {
-              setError(errorMessage(err));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {mode === 'signUp' && (
-            <label>
-              Nombre y apellido *{' '}
-              <input name="name" autoComplete="name" required minLength={2} />
-            </label>
-          )}
-          <label>
-            Email *{' '}
-            <input name="email" type="email" autoComplete="email" required />
-          </label>
-          <label>
-            Contraseña *{' '}
-            <input
-              name="password"
-              type="password"
-              autoComplete={
-                mode === 'signIn' ? 'current-password' : 'new-password'
-              }
-              required
-              minLength={8}
-            />
-          </label>
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          <button type="submit" className="button full-width" disabled={busy}>
-            {submitLabel}
+    <>
+      <a href="/">Inicio</a>
+      {data.loading ? null : data.account ? (
+        <>
+          <a href="/account">Mi cuenta</a>
+          <button className="nav-link" onClick={() => void data.signOut()}>
+            Cerrar sesión
           </button>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setMode(mode === 'signIn' ? 'signUp' : 'signIn')}
-          >
-            {mode === 'signIn'
-              ? '¿Todavía no tenés cuenta? Creala'
-              : 'Ya tengo una cuenta'}
-          </button>
-        </form>
+        </>
+      ) : (
+        <a href="/account">Ingresar</a>
       )}
-      {mode === 'profile' && data.participant && (
-        <form
-          className="registration-form"
-          onSubmit={async (event) => {
-            event.preventDefault();
-            setBusy(true);
-            setError('');
-            const form = new FormData(event.currentTarget);
-            try {
-              await data.saveParticipant({
-                name: getFormValue(form, 'name'),
-                email: getFormValue(form, 'email'),
-                phone: getFormValue(form, 'phone'),
-              });
-              onClose();
-            } catch (err) {
-              setError(errorMessage(err));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <p className="muted small">
-            Estos datos se completan automáticamente en tus inscripciones.
-          </p>
-          <label>
-            Nombre y apellido *{' '}
-            <input name="name" defaultValue={data.participant.name} required />
-          </label>
-          <label>
-            Email *{' '}
-            <input
-              name="email"
-              type="email"
-              defaultValue={data.participant.email}
-              required
-            />
-          </label>
-          <label>
-            Teléfono <span className="optional">(opcional)</span>{' '}
-            <input
-              name="phone"
-              type="tel"
-              defaultValue={data.participant.phone}
-            />
-          </label>
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          <button type="submit" className="button full-width" disabled={busy}>
-            {busy ? 'Guardando…' : 'Guardar datos'}
-          </button>
-        </form>
-      )}
-    </Modal>
+    </>
   );
 }
 
@@ -238,9 +82,18 @@ export function SiteFooter() {
               eliminan junto con la inscripción.
             </p>
             <p>
+              La cuenta es opcional. Si creás una, guardamos tu email de acceso,
+              tu contraseña cifrada y los datos que elijas completar: contacto,
+              estudios, contacto de emergencia y los barrios a los que fuiste.
+              Las inscripciones que hacés con tu cuenta forman tu historial, y
+              el equipo usa estos datos para organizar los grupos de cada
+              barrio.
+            </p>
+            <p>
               Solo el Equipo de Inscripciones puede consultar las inscripciones.
               Usamos tu email para evitar registros duplicados en una misma
-              actividad. No mostramos públicamente tus datos.
+              actividad. El equipo puede ver tus inscripciones anteriores para
+              organizar las actividades. No mostramos públicamente tus datos.
             </p>
             <p>
               Si necesitás corregir o eliminar una inscripción, contactá al

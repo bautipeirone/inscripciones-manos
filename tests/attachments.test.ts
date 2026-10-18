@@ -77,6 +77,36 @@ test('a participant can submit a receipt with an inscription and admins can see 
   ).not.toContain('comprobante.pdf');
 });
 
+test('documents sent while signed in are linked to the account, which sees only their names', async () => {
+  const { t, eventId } = await setup();
+  const userId = await t.run((ctx) =>
+    ctx.db.insert('users', { email: 'ana@example.com', name: 'Ana' }),
+  );
+  const ana = t.withIdentity({ subject: `${userId}|session` });
+  const body = new FormData();
+  body.set(
+    'registration',
+    JSON.stringify({ eventId, ...details, phone: '341 555-0000' }),
+  );
+  body.set('saveProfile', 'true');
+  body.append(
+    'attachments',
+    new File(['%PDF-1.4\nreceipt\n%%EOF'], 'comprobante.pdf', {
+      type: 'application/pdf',
+    }),
+  );
+  const response = await ana.fetch('/inscriptions', { method: 'POST', body });
+  expect(response.status, await response.clone().text()).toBe(200);
+  const [entry] = await ana.query(api.participants.history, {});
+  expect(entry.attachments).toEqual([
+    { name: 'comprobante.pdf', contentType: 'application/pdf', size: 22 },
+  ]);
+  expect((await ana.query(api.participants.viewer, {}))?.phone).toBe(
+    '341 555-0000',
+  );
+  expect(await t.query(api.participants.history, {})).toEqual([]);
+});
+
 test('documents can only be downloaded by administrators and deletion revokes access', async () => {
   const { t, admin, eventId } = await setup();
   const body = new FormData();
