@@ -27,10 +27,13 @@ import {
   registrationStatusLabels,
   type Event,
   type EventInput,
+  type AccountSummary,
+  type PersonInfo,
   type Question,
   type Registration,
 } from './domain';
 import { Modal, Status, errorMessage } from './ui';
+import type { ZoneOverview } from './zones';
 import { SiteHeader, SiteFooter } from './Layout';
 
 export function Admin({ onHome }: { onHome: () => void }) {
@@ -348,6 +351,12 @@ function Login() {
         <div className="login-card">
           <h1>Ingresar</h1>
           <p>Acceso exclusivo para el Equipo de Inscripciones.</p>
+          {data.account && !data.demo && (
+            <p className="notice" role="status">
+              Ingresaste como participante con {data.account.accountEmail}. Esta
+              cuenta no tiene acceso a la administración.
+            </p>
+          )}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -828,6 +837,14 @@ function RegistrationList({
         'Fecha de inscripción (UTC)',
         'Consentimiento',
         'Estado',
+        'Con cuenta',
+        'Otras inscripciones',
+        'Carrera',
+        'Ya se recibió',
+        'Contacto de emergencia',
+        'Vínculo',
+        'Teléfono de emergencia',
+        'Barrio',
         ...event.questions.map((q) => q.label),
       ],
       ...rows.map((r) => [
@@ -837,6 +854,14 @@ function RegistrationList({
         new Date(r._creationTime).toISOString(),
         r.consent ? 'Sí' : 'No',
         registrationStatusLabels[r.status ?? 'accepted'],
+        r.userId ? 'Sí' : 'No',
+        String(r.otherRegistrations),
+        r.account?.career ?? '',
+        r.account?.career ? (r.account.graduated ? 'Sí' : 'No') : '',
+        r.account?.emergencyContact?.name ?? '',
+        r.account?.emergencyContact?.relationship ?? '',
+        r.account?.emergencyContact?.phone ?? '',
+        zoneText(r),
         ...event.questions.map((q) => r.answers[q.id] ?? ''),
       ]),
     ];
@@ -915,6 +940,8 @@ function RegistrationList({
                   <th>Email</th>
                   <th>Fecha</th>
                   <th>Estado</th>
+                  <th>Otras inscripciones</th>
+                  <th>Barrio</th>
                   <th>
                     <span className="sr-only">Detalle</span>
                   </th>
@@ -931,6 +958,8 @@ function RegistrationList({
                       })}
                     </td>
                     <td>{registrationStatusLabels[r.status ?? 'accepted']}</td>
+                    <td>{r.otherRegistrations}</td>
+                    <td>{zoneText(r)}</td>
                     <td>
                       <button
                         className="icon-button"
@@ -974,6 +1003,28 @@ function RegistrationList({
             <dd>{detail.phone || 'No informado'}</dd>
             <dt>Estado</dt>
             <dd>{registrationStatusLabels[detail.status ?? 'accepted']}</dd>
+            <dt>Cuenta de participante</dt>
+            <dd>
+              {detail.userId
+                ? 'Se inscribió con su cuenta'
+                : 'Se inscribió sin cuenta'}
+            </dd>
+            {detail.account && (
+              <>
+                <dt>Carrera</dt>
+                <dd>
+                  {detail.account.career
+                    ? `${detail.account.career} · ${detail.account.graduated ? 'Ya se recibió' : 'Estudiando'}`
+                    : 'No informada'}
+                </dd>
+                <dt>Contacto de emergencia</dt>
+                <dd>
+                  {detail.account.emergencyContact
+                    ? `${detail.account.emergencyContact.name} (${detail.account.emergencyContact.relationship}) · ${detail.account.emergencyContact.phone}`
+                    : 'No informado'}
+                </dd>
+              </>
+            )}
             {event.questions.map((q) => (
               <div key={q.id}>
                 <dt>{q.label}</dt>
@@ -1010,6 +1061,18 @@ function RegistrationList({
               </ul>
             </div>
           )}
+          <PersonPanel
+            key={detail._id}
+            registration={detail}
+            onZoneAssigned={(zone) => {
+              const update = (r: Registration) =>
+                r._id === detail._id && r.account
+                  ? { ...r, account: { ...r.account, zone } }
+                  : r;
+              setRows((old) => old.map(update));
+              setDetail((current) => current && update(current));
+            }}
+          />
           {detail.status === 'pending' && (
             <button
               className="button button-small"
@@ -1084,5 +1147,213 @@ function RegistrationList({
         </section>
       )}
     </Modal>
+  );
+}
+type ZoneSummary = NonNullable<AccountSummary['zone']>;
+const zoneText = (r: Registration) =>
+  !r.userId
+    ? 'Sin cuenta'
+    : r.account?.zone
+      ? r.account.zone.name +
+        (r.account.zone.status === 'requested' ? ' (elegido)' : '')
+      : 'Sin asignar';
+// Helps the team see who already took part, e.g. before the January activity.
+function PersonPanel({
+  registration,
+  onZoneAssigned,
+}: {
+  registration: Registration;
+  onZoneAssigned: (zone: ZoneSummary) => void;
+}) {
+  const data = useData();
+  const [info, setInfo] = useState<PersonInfo | null | undefined>(undefined);
+  const [error, setError] = useState('');
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    let active = true;
+    data
+      .person(registration._id)
+      .then((result) => {
+        if (active) setInfo(result);
+      })
+      .catch((err) => {
+        if (active) setError(errorMessage(err));
+      });
+    return () => {
+      active = false;
+    };
+  }, [registration._id, version]);
+  const entries = info?.inscriptions;
+  return (
+    <>
+      {info?.zone && registration.userId && (
+        <ZoneAssigner
+          overview={info.zone}
+          userId={registration.userId}
+          onAssigned={(zone) => {
+            setVersion((v) => v + 1);
+            onZoneAssigned(zone);
+          }}
+        />
+      )}
+      <div className="person-history">
+        <h4>Otras inscripciones</h4>
+        {error ? (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        ) : entries === undefined ? (
+          <p className="muted small" role="status">
+            Cargando historial…
+          </p>
+        ) : entries.length === 0 ? (
+          <p className="muted small">No tiene otras inscripciones.</p>
+        ) : (
+          <>
+            <ul>
+              {entries.map((entry) => (
+                <li key={entry._id}>
+                  <strong>{entry.event.title}</strong>
+                  <span>{formatSchedule(entry.event)}</span>
+                  <small>
+                    {entry.match === 'account' ? 'Misma cuenta' : 'Mismo email'}{' '}
+                    · {registrationStatusLabels[entry.status]}
+                  </small>
+                </li>
+              ))}
+            </ul>
+            <p className="muted small">
+              Los emails no se verifican: las coincidencias por email son
+              orientativas.
+            </p>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+// Confirms a choice, assigns a barrio, or moves the person from this
+// activity's edition on. The future split panel will reuse the same action.
+function ZoneAssigner({
+  overview,
+  userId,
+  onAssigned,
+}: {
+  overview: ZoneOverview;
+  userId: string;
+  onAssigned: (zone: ZoneSummary) => void;
+}) {
+  const data = useData();
+  const { edition, cycle, zones, placement, history } = overview;
+  const [selected, setSelected] = useState(placement?.zoneId ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const chosen = zones.find((z) => z._id === selected);
+  const confirming =
+    placement?.status === 'requested' && placement.zoneId === selected;
+  return (
+    <div className="zone-admin">
+      <h4>Barrio · edición {edition}</h4>
+      {!cycle || !zones.length ? (
+        <p className="muted small">
+          No hay barrios cargados para la edición {edition}.
+        </p>
+      ) : (
+        <>
+          <p>
+            {!placement ? (
+              'Sin barrio: no eligió uno.'
+            ) : placement.status === 'requested' ? (
+              <>
+                Eligió <strong>{placement.zoneName}</strong>. Pendiente de
+                confirmación.
+              </>
+            ) : (
+              <>
+                <strong>{placement.zoneName}</strong> · confirmado
+                {placement.fromEdition < edition &&
+                  ` desde ${placement.fromEdition}`}
+                .
+              </>
+            )}
+          </p>
+          <div className="zone-assign">
+            <label>
+              Barrio desde esta edición
+              <select
+                value={selected}
+                onChange={(e) => setSelected(e.target.value)}
+              >
+                <option value="" disabled>
+                  Elegí un barrio
+                </option>
+                {zones.map((z) => (
+                  <option key={z._id} value={z._id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="button button-small"
+              disabled={
+                busy ||
+                !chosen ||
+                (placement?.status === 'confirmed' &&
+                  placement.zoneId === selected)
+              }
+              onClick={async () => {
+                if (!chosen) return;
+                setBusy(true);
+                setError('');
+                try {
+                  await data.assignZone({
+                    userId,
+                    zoneId: chosen._id,
+                    edition,
+                  });
+                  onAssigned({ name: chosen.name, status: 'confirmed' });
+                } catch (err) {
+                  setError(errorMessage(err));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy
+                ? 'Guardando…'
+                : confirming
+                  ? 'Confirmar barrio'
+                  : 'Asignar barrio'}
+            </button>
+          </div>
+          <p className="muted small">
+            Ciclo {cycle.label}. Las ediciones anteriores conservan su barrio.
+          </p>
+        </>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {history.length > 0 && (
+        <>
+          <h5>Barrios por edición</h5>
+          <ul>
+            {history.map((h) => (
+              <li key={`${h.source}-${h.edition}`}>
+                <strong>{h.edition}</strong> · {h.zone ?? 'Sin barrio'}
+                {h.source === 'declared'
+                  ? ' (informado por la persona)'
+                  : h.status === 'requested'
+                    ? ' (elegido, sin confirmar)'
+                    : ''}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
   );
 }

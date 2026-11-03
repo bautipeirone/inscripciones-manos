@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { useData } from './data';
 import {
+  activityKind,
+  activityUrl,
   formatSchedule,
   formatDeadline,
   status,
@@ -9,16 +11,10 @@ import {
   type Event,
 } from './domain';
 import { Status } from './ui';
-import { SiteHeader, SiteFooter } from './Layout';
+import { AccountNav, SiteHeader, SiteFooter } from './Layout';
 import { RegistrationForm } from './RegistrationForm';
 import { Admin } from './Admin';
-
-const activityUrl = (event: Event) =>
-  `/activities/${encodeURIComponent(event._id)}`;
-const activityKind = (event: Event) =>
-  event.kind === 'main'
-    ? `Manos a la Obra ${event.date.slice(0, 4)}`
-    : 'Visita diagnóstica';
+import { AccountPage, safeNext, signInUrl } from './Account';
 
 export default function App() {
   const data = useData();
@@ -59,9 +55,19 @@ export default function App() {
           </button>
         </div>
       )}
-      <SiteHeader />
+      <SiteHeader>
+        <AccountNav />
+      </SiteHeader>
       {route === '/' ? (
         <Home events={events} loading={data.loading} now={now} />
+      ) : route === '/account' ? (
+        <AccountPage
+          next={safeNext(
+            new URLSearchParams(window.location.search).get('next'),
+          )}
+          now={now}
+          onSignedIn={navigate}
+        />
       ) : match && data.loading ? (
         <main className="container page-section" role="status">
           Cargando actividad…
@@ -204,8 +210,10 @@ function ActivityCard({ event, now }: { event: Event; now: number }) {
 }
 
 function ActivityDetail({ event, now }: { event: Event; now: number }) {
+  const data = useData();
   const [registering, setRegistering] = useState(false);
   const state = status(event, now);
+  const own = data.history?.find((h) => h.event._id === event._id);
   return (
     <main className="container page-section">
       <a className="back-link" href="/">
@@ -242,6 +250,25 @@ function ActivityDetail({ event, now }: { event: Event; now: number }) {
               email y actividad. Si volvés a enviar el formulario con ese email,
               conservamos la inscripción original.
             </p>
+            {data.account ? (
+              <p>
+                Ingresaste con tu cuenta: completamos el formulario con tus
+                datos y la inscripción queda guardada en{' '}
+                <a className="text-link" href="/account">
+                  Mi cuenta
+                </a>
+                .
+              </p>
+            ) : (
+              <p>
+                ¿Tenés una cuenta?{' '}
+                <a className="text-link" href={signInUrl(activityUrl(event))}>
+                  Ingresá
+                </a>{' '}
+                para completar tus datos automáticamente y guardar la
+                inscripción en tu historial.
+              </p>
+            )}
           </section>
         </div>
         <aside className="activity-sidebar">
@@ -268,17 +295,37 @@ function ActivityDetail({ event, now }: { event: Event; now: number }) {
               )}
             </dl>
             <div className="activity-signup">
-              <button
-                className="button full-width"
-                disabled={state !== 'open'}
-                onClick={() => setRegistering(true)}
-              >
-                {state === 'open' ? 'Inscribirme' : statusLabels[state]}
-              </button>
-              {state !== 'open' && (
-                <p>
-                  Las inscripciones para esta actividad no están disponibles.
-                </p>
+              {own ? (
+                <>
+                  <p className="registered-note">
+                    <Check size={16} aria-hidden="true" />
+                    {own.status === 'pending'
+                      ? 'Tu solicitud está pendiente de aprobación.'
+                      : 'Ya te inscribiste con tu cuenta.'}
+                  </p>
+                  <a
+                    className="button button-outline full-width"
+                    href="/account"
+                  >
+                    Ver mis inscripciones
+                  </a>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="button full-width"
+                    disabled={state !== 'open'}
+                    onClick={() => setRegistering(true)}
+                  >
+                    {state === 'open' ? 'Inscribirme' : statusLabels[state]}
+                  </button>
+                  {state !== 'open' && (
+                    <p>
+                      Las inscripciones para esta actividad no están
+                      disponibles.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </section>
