@@ -22,6 +22,17 @@ import {
   type InventoryInput,
 } from './inventory';
 import {
+  defaultAbout,
+  planDonorBatch,
+  prepareAbout,
+  prepareDonor,
+  type AboutContent,
+  type Donor,
+  type DonorBatchResult,
+  type DonorInput,
+  type DonorKind,
+} from './about';
+import {
   assignTarget,
   assignmentAt,
   cycleFor,
@@ -106,6 +117,17 @@ type Data = {
   inventories: Inventory[] | undefined;
   saveInventory: (inventory: InventoryInput, id?: string) => Promise<void>;
   removeInventory: (id: string) => Promise<void>;
+  // The public «Nosotros» page; undefined while loading.
+  about: AboutContent | undefined;
+  donors: Donor[] | undefined;
+  saveAbout: (content: AboutContent) => Promise<void>;
+  saveDonor: (donor: DonorInput, id?: string) => Promise<void>;
+  addDonors: (input: {
+    names: string[];
+    kind: DonorKind;
+    year: number;
+  }) => Promise<DonorBatchResult>;
+  removeDonor: (id: string) => Promise<void>;
 };
 const Context = createContext<Data | null>(null);
 export function useData() {
@@ -128,6 +150,12 @@ export function LiveData({ children }: { children: ReactNode }) {
   const publicEvents = useQuery(api.events.listPublic);
   const adminEvents = useQuery(api.events.listAdmin, viewer ? {} : 'skip');
   const inventories = useQuery(api.inventories.listAdmin, viewer ? {} : 'skip');
+  const about = useQuery(api.about.get);
+  const donors = useQuery(api.about.listDonors);
+  const saveAbout = useMutation(api.about.save);
+  const saveDonor = useMutation(api.about.saveDonor);
+  const addDonors = useMutation(api.about.addDonors);
+  const removeDonor = useMutation(api.about.removeDonor);
   const auth = useAuthActions();
   const token = useAuthToken();
   const save = useMutation(api.events.save);
@@ -169,6 +197,18 @@ export function LiveData({ children }: { children: ReactNode }) {
         },
         removeInventory: async (id) => {
           await removeInventory({ id: id as Id<'inventories'> });
+        },
+        about: about === undefined ? undefined : (about ?? defaultAbout),
+        donors,
+        saveAbout: async (content) => {
+          await saveAbout({ content });
+        },
+        saveDonor: async (donor, id) => {
+          await saveDonor({ donor, ...(id ? { id: id as Id<'donors'> } : {}) });
+        },
+        addDonors: async (input) => await addDonors(input),
+        removeDonor: async (id) => {
+          await removeDonor({ id: id as Id<'donors'> });
         },
         signIn,
         participantSignIn: signIn,
@@ -385,6 +425,30 @@ function seedZones(): Pick<DemoState, 'zoneCycles' | 'zones'> {
     })),
   };
 }
+// Invented names, so the demo shows how the donors wall reads.
+function seedDonors(): Donor[] {
+  const year = new Date().getFullYear();
+  const rows: [string, DonorKind, number[], string?][] = [
+    ['Ferretería El Galpón', 'organization', [year, year - 1], 'Herramientas'],
+    ['Pinturería Del Litoral', 'organization', [year, year - 1, year - 2]],
+    ['Corralón Los Hermanos', 'organization', [year], 'Arena y cemento'],
+    ['Panadería La Espiga', 'organization', [year - 1, year - 2]],
+    ['Lucía Ferreyra', 'person', [year, year - 1]],
+    ['Martín Acosta', 'person', [year]],
+    ['Familia Bianchi', 'person', [year, year - 2]],
+    ['Carolina Sosa', 'person', [year]],
+    ['Julián Peralta', 'person', [year - 1]],
+    ['Mariana Godoy', 'person', [year - 1, year - 2]],
+    ['Tomás Villalba', 'person', [year - 2]],
+  ];
+  return rows.map(([name, kind, years, note], index) => ({
+    _id: `demo-donor-${index}`,
+    name,
+    kind,
+    years,
+    ...(note ? { note } : {}),
+  }));
+}
 const STORAGE = 'manos-demo-v1';
 type DemoRegistration = Omit<Registration, 'otherRegistrations'>;
 type DemoAccount = Account & { _id: string };
@@ -399,6 +463,8 @@ type DemoState = {
   zones: Zone[];
   zoneAssignments: (ZoneAssignment & { userId: string })[];
   pastEditions: (PastEdition & { userId: string })[];
+  about: AboutContent | null;
+  donors: Donor[];
 };
 function readDemo(): DemoState {
   try {
@@ -420,6 +486,8 @@ function readDemo(): DemoState {
           pastEditions: Array.isArray(data.pastEditions)
             ? data.pastEditions
             : [],
+          about: Array.isArray(data.about?.sections) ? data.about : null,
+          donors: Array.isArray(data.donors) ? data.donors : seedDonors(),
         };
     }
   } catch {
@@ -434,6 +502,8 @@ function readDemo(): DemoState {
     ...seedZones(),
     zoneAssignments: [],
     pastEditions: [],
+    about: null,
+    donors: seedDonors(),
   };
 }
 // Mirrors the backend: the same account or, as a hint, the same email.
@@ -525,6 +595,58 @@ export function DemoData({ children }: { children: ReactNode }) {
           setData((old) => ({
             ...old,
             inventories: old.inventories.filter((item) => item._id !== id),
+          }));
+        },
+        about: data.about ?? defaultAbout,
+        donors: data.donors,
+        saveAbout: async (content) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          const about = prepareAbout(content);
+          setData((old) => ({ ...old, about }));
+        },
+        saveDonor: async (donor, id) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          if (id && !data.donors.some((item) => item._id === id))
+            throw new Error('No encontramos al donante.');
+          const value = prepareDonor(donor);
+          setData((old) => ({
+            ...old,
+            donors: id
+              ? old.donors.map((item) =>
+                  item._id === id ? { ...value, _id: id } : item,
+                )
+              : [...old.donors, { ...value, _id: crypto.randomUUID() }],
+          }));
+        },
+        addDonors: async (input) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          const plan = planDonorBatch(data.donors, input);
+          const years = new Map(plan.updates.map((u) => [u._id, u.years]));
+          setData((old) => ({
+            ...old,
+            donors: [
+              ...old.donors.map((item) =>
+                years.has(item._id)
+                  ? { ...item, years: years.get(item._id)! }
+                  : item,
+              ),
+              ...plan.inserts.map((item) => ({
+                ...item,
+                _id: crypto.randomUUID(),
+              })),
+            ],
+          }));
+          return {
+            added: plan.inserts.length,
+            updated: plan.updates.length,
+            unchanged: plan.unchanged,
+          };
+        },
+        removeDonor: async (id) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          setData((old) => ({
+            ...old,
+            donors: old.donors.filter((item) => item._id !== id),
           }));
         },
         signIn: async () => {

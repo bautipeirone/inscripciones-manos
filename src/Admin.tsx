@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useData } from './data';
 import { Inventories } from './Inventories';
+import { AboutAdmin } from './AboutAdmin';
 import {
   csvCell,
   formatDate,
@@ -38,7 +39,9 @@ import { SiteHeader, SiteFooter } from './Layout';
 
 export function Admin({ onHome }: { onHome: () => void }) {
   const data = useData();
-  const [tab, setTab] = useState<'activities' | 'inventories'>('activities');
+  const [tab, setTab] = useState<'activities' | 'inventories' | 'about'>(
+    'activities',
+  );
   const [editor, setEditor] = useState<Event | 'new' | null>(null);
   const [view, setView] = useState<Event | null>(null);
   const [search, setSearch] = useState('');
@@ -160,6 +163,17 @@ export function Admin({ onHome }: { onHome: () => void }) {
           >
             Inventarios
           </button>
+          <button
+            id="about-tab"
+            role="tab"
+            aria-selected={tab === 'about'}
+            aria-controls="about-panel"
+            tabIndex={tab === 'about' ? 0 : -1}
+            className={tab === 'about' ? 'active' : ''}
+            onClick={() => setTab('about')}
+          >
+            Nosotros
+          </button>
         </div>
         {error && (
           <p className="error" role="alert">
@@ -173,6 +187,14 @@ export function Admin({ onHome }: { onHome: () => void }) {
           hidden={tab !== 'inventories'}
         >
           {tab === 'inventories' && <Inventories />}
+        </section>
+        <section
+          id="about-panel"
+          role="tabpanel"
+          aria-labelledby="about-tab"
+          hidden={tab !== 'about'}
+        >
+          {tab === 'about' && <AboutAdmin />}
         </section>
         <section
           id="activities-panel"

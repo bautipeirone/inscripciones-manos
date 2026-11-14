@@ -31,6 +31,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 - Consulta y búsqueda de participantes, respuestas y exportación CSV protegida contra fórmulas de planillas.
 - Preguntas bloqueadas al recibir la primera inscripción para conservar el significado de las respuestas. El resto del evento se puede editar.
 - Pestaña privada **Inventarios**: registros por fecha y etiqueta, con nombre, cantidad (incluye decimales), unidad de medida y comentarios opcionales por elemento. Permite consultar, buscar, editar, exportar CSV, importar CSV o Excel y eliminar con confirmación.
+- Página pública **Nosotros** (`/nosotros`) con la presentación del proyecto y la sección **Donaciones** (`/nosotros#donaciones`), que lista por año a las personas y empresas que donaron. Los textos y los donantes se editan desde la pestaña **Nosotros** de `/admin` (ver [Nosotros y donaciones](#nosotros-y-donaciones)).
 - Diseño adaptable, formularios etiquetados, ventanas con gestión del foco y cierre con Escape.
 
 Los eventos de ejemplo **no se cargan en Convex**. La base real comienza vacía para que el equipo publique sus fechas, lugares y formularios definitivos.
@@ -272,3 +273,15 @@ Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay 
 - `tests/`: pruebas del backend y de navegador.
 
 El logo se copia sin modificaciones de `~/manos/public/logo.svg`. La paleta utiliza `#f8c514`, `#fef5cd`, `#c69e10` y `#5c4a08`. Las tipografías Open Sans, Roboto Condensed y Kalam se cargan desde Google Fonts con fuentes de sistema como alternativa.
+
+## Nosotros y donaciones
+
+La página `/nosotros` muestra textos de ejemplo hasta que el equipo guarda los propios. En `/admin`, la pestaña **Nosotros** permite:
+
+- **Editar textos**: título, presentación, secciones (agregar, quitar y reordenar), el texto de Donaciones y el recuadro «Cómo donar». Es texto simple: una línea en blanco separa párrafos, y las direcciones web y los emails se convierten en enlaces. Si «Cómo donar» queda vacío, el recuadro no se muestra.
+- **Nuevo donante**: nombre, tipo (persona, o empresa u organización), años en los que donó y, opcionalmente, un detalle corto y un sitio web al que enlaza el nombre.
+- **Agregar varios**: pegar una lista de nombres de un mismo año, uno por línea. Quien ya está en la lista solo suma el año; no se duplica.
+
+Cada donante aparece bajo todos los años en que donó, del más reciente al más antiguo. Los nombres son públicos: cargá solo los de quienes aceptaron figurar. No se guardan montos ni logos.
+
+La función agrega las tablas `about` (un único documento) y `donors`, y el módulo `convex/about.ts`. Desplegá el backend antes del frontend; no requiere migración. En la demo local, la lista empieza con donantes inventados.

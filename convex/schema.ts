@@ -52,6 +52,26 @@ export const inventoryFields = {
     }),
   ),
 };
+// Texts of the public «Nosotros» page, edited from the admin panel.
+export const aboutFields = {
+  title: v.string(),
+  lead: v.string(),
+  sections: v.array(v.object({ title: v.string(), body: v.string() })),
+  donationsIntro: v.string(),
+  donationsHow: v.string(),
+};
+export const donorKind = v.union(
+  v.literal('person'),
+  v.literal('organization'),
+);
+export const donorFields = {
+  name: v.string(),
+  kind: donorKind,
+  // Every year in which they donated; the page lists them under each one.
+  years: v.array(v.number()),
+  note: v.optional(v.string()),
+  url: v.optional(v.string()),
+};
 export const profileFields = {
   name: v.string(),
   email: v.string(),
@@ -72,6 +92,9 @@ export default defineSchema({
   ...authTables,
   admins: defineTable({ userId: v.id('users') }).index('by_user', ['userId']),
   inventories: defineTable(inventoryFields).index('by_date', ['date']),
+  // A single document; absent until the team saves its own texts.
+  about: defineTable(aboutFields),
+  donors: defineTable(donorFields),
   // Personal details a participant saves to prefill inscription forms.
   profiles: defineTable({
     userId: v.id('users'),
