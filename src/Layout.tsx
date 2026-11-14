@@ -26,6 +26,7 @@ export function AccountNav() {
   return (
     <>
       <a href="/">Inicio</a>
+      <a href="/nosotros">Nosotros</a>
       {data.loading ? null : data.account ? (
         <>
           <a href="/account">Mi cuenta</a>

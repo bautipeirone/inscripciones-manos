@@ -53,3 +53,15 @@ Elegí **Inventarios → Importar inventario**. El menú incluye instrucciones y
 Cada fila representa un elemento con nombre y cantidad mayor o igual a cero. Se aceptan decimales con punto o coma, sin separadores de miles. En un CSV separado por coma, los decimales con coma y los textos que incluyan comas o saltos de línea deben ir entre comillas dobles. En Excel se requieren valores, sin fórmulas, errores ni celdas combinadas. Los archivos pueden pesar hasta 5 MB; la tabla admite hasta 500 filas después del encabezado.
 
 Podés incluir **Fecha** y **Etiqueta**, repitiendo el mismo valor para todos los elementos, o completar esos datos en el menú. Las fechas se leen como `AAAA-MM-DD` o como celdas de fecha de Excel. El CSV generado por **Exportar CSV** se puede volver a importar. El archivo se procesa en el navegador y se valida completo antes de habilitar el guardado. Revisá la vista previa y presioná **Guardar inventario** para crear un registro nuevo; los inventarios anteriores se conservan. Si una fila es inválida, se muestra un error y no se guarda ningún elemento del archivo.
+
+## Nosotros y donaciones
+
+La página `/nosotros` muestra textos de ejemplo hasta que el equipo guarda los propios. En `/admin`, la pestaña **Nosotros** permite:
+
+- **Editar textos**: título, presentación, secciones (agregar, quitar y reordenar), el texto de Donaciones y el recuadro «Cómo donar». Es texto simple: una línea en blanco separa párrafos, y las direcciones web y los emails se convierten en enlaces. Si «Cómo donar» queda vacío, el recuadro no se muestra.
+- **Nuevo donante**: nombre, tipo (persona, o empresa u organización), años en los que donó y, opcionalmente, un detalle corto y un sitio web al que enlaza el nombre.
+- **Agregar varios**: pegar una lista de nombres de un mismo año, uno por línea. Quien ya está en la lista solo suma el año; no se duplica.
+
+Cada donante aparece bajo todos los años en que donó, del más reciente al más antiguo. Los nombres son públicos: cargá solo los de quienes aceptaron figurar. No se guardan montos ni logos.
+
+La función agrega las tablas `about` (un único documento) y `donors`, y el módulo `convex/about.ts`. Desplegá el backend antes del frontend; no requiere migración. En la demo local, la lista empieza con donantes inventados.
