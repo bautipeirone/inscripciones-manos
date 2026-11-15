@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as about from "../about.js";
 import type * as accounts from "../accounts.js";
 import type * as admin from "../admin.js";
 import type * as attachmentHttp from "../attachmentHttp.js";
@@ -26,6 +27,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  about: typeof about;
   accounts: typeof accounts;
   admin: typeof admin;
   attachmentHttp: typeof attachmentHttp;

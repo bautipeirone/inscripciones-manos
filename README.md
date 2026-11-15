@@ -31,6 +31,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 - Consulta y búsqueda de participantes, respuestas y exportación CSV protegida contra fórmulas de planillas.
 - Preguntas bloqueadas al recibir la primera inscripción para conservar el significado de las respuestas. El resto del evento se puede editar.
 - Pestaña privada **Inventarios**: registros por fecha y etiqueta, con nombre, cantidad (incluye decimales), unidad de medida y comentarios opcionales por elemento. Permite consultar, buscar, editar, exportar CSV, importar CSV o Excel y eliminar con confirmación.
+- Página pública **Nosotros** (`/nosotros`) con la presentación del proyecto y la sección **Donaciones** (`/nosotros#donaciones`), que lista por año a las personas y empresas que donaron. Los textos y los donantes se editan desde la pestaña **Nosotros** de `/admin` (ver [Nosotros y donaciones](docs/funcionalidades.md#nosotros-y-donaciones)).
 - Diseño adaptable, formularios etiquetados, ventanas con gestión del foco y cierre con Escape.
 
 Los eventos de ejemplo **no se cargan en Convex**. La base real comienza vacía para que el equipo publique sus fechas, lugares y formularios definitivos.
@@ -51,6 +52,6 @@ Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay 
 
 ## Documentación
 
-- [Funcionalidades](docs/funcionalidades.md): barrios, aprobación de inscripciones, documentos adjuntos e inventarios.
+- [Funcionalidades](docs/funcionalidades.md): barrios, aprobación de inscripciones, documentos adjuntos, inventarios y la página Nosotros.
 - [CI/CD con GitHub Actions](docs/ci-cd.md): comprobaciones y despliegue automático.
 - [Estructura](docs/estructura.md): organización del código y recursos de marca.
