@@ -137,6 +137,45 @@ describe('inscription confirmation emails', () => {
     ).rejects.toThrow('riesgo de duplicar');
   });
 
+  test('signed-in inscriptions email the submitted address once and stay linked to the account', async () => {
+    const { t, eventId, outbox } = await setup();
+    const accountEmail = 'cuenta@example.com';
+    const userId = await t.run((ctx) =>
+      ctx.db.insert('users', { email: accountEmail }),
+    );
+    const participant = t.withIdentity({ subject: `${userId}|session` });
+
+    await participant.mutation(api.registrations.submit, {
+      eventId,
+      ...details,
+      saveProfile: true,
+    });
+    await participant.mutation(api.registrations.submit, {
+      eventId,
+      ...details,
+      email: 'otro@example.com',
+    });
+
+    expect(await participant.query(api.participants.viewer, {})).toMatchObject({
+      accountEmail,
+      email: details.email,
+    });
+    const history = await participant.query(api.participants.history, {});
+    expect(history).toHaveLength(1);
+    const jobs = await outbox();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      registrationId: history[0]._id,
+      to: details.email,
+    });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(String(options?.body))).toMatchObject([
+      { to: [details.email] },
+    ]);
+  });
+
   test('pending wording and event details are captured before subsequent edits or approval', async () => {
     const { t, admin, eventId, submit, outbox } = await setup({
       requireApproval: true,
