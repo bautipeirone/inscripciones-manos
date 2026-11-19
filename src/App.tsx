@@ -14,7 +14,7 @@ import { Status } from './ui';
 import { AccountNav, SiteHeader, SiteFooter } from './Layout';
 import { RegistrationForm } from './RegistrationForm';
 import { Admin } from './Admin';
-import { AboutPage } from './About';
+import { AboutPage } from './AboutPage';
 import { AccountPage, safeNext, signInUrl } from './Account';
 
 export default function App() {
