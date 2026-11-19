@@ -28,6 +28,32 @@ En **Ver inscripciones**, usá **Estado de inscripción** para filtrar pendiente
 
 Desplegá el backend antes del frontend. Los campos nuevos de configuración y estado son opcionales para conservar actividades e inscripciones existentes; no requieren migración.
 
+## Enviar correos de inscripción
+
+El correo se programa al guardar una inscripción nueva a una actividad, con o sin cuenta y con o sin documentos. Incluye los datos de la actividad y de la inscripción. Si se requiere aprobación manual, confirma la recepción de la solicitud e indica que queda pendiente. Crear una cuenta no genera un correo de bienvenida ni de verificación.
+
+### Configurar el envío
+
+Convex aloja la cola, los reintentos y el webhook mediante el [componente de Resend](https://github.com/get-convex/resend). Configurá estas variables en **Settings → Environment Variables** de cada deployment de Convex.
+
+| Variable                | Uso                                                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RESEND_API_KEY`        | Clave de Resend con permiso de envío desde el dominio elegido.                                                                                     |
+| `EMAIL_FROM`            | Dirección de un dominio verificado para envío en Resend. Acepta `inscripciones@tu-dominio.org` o `Manos a la Obra <inscripciones@tu-dominio.org>`. |
+| `EMAIL_REPLY_TO`        | Dirección opcional para recibir respuestas.                                                                                                        |
+| `EMAIL_TEST_MODE`       | Usá `false` para enviar a direcciones reales. Cualquier otro valor, incluso si falta, limita los envíos a las direcciones de prueba de Resend.     |
+| `RESEND_WEBHOOK_SECRET` | Secreto de firma del webhook de Resend de ese deployment.                                                                                          |
+
+Verificá en Resend el dominio exacto que figura en `EMAIL_FROM` antes de habilitar el envío real. Con el modo de prueba activo podés usar `onboarding@resend.dev` como remitente y `delivered@resend.dev` para simular una entrega. [Dominios de Resend](https://resend.com/docs/dashboard/domains/introduction) · [Pruebas de envío](https://resend.com/docs/dashboard/emails/send-test-emails).
+
+Desplegá el backend antes del frontend. En Resend, suscribí el webhook a los eventos `email.*` y apuntalo al deployment correspondiente, desarrollo en `https://animated-lemming-207.convex.site/resend-webhook` y producción en `https://oceanic-crab-449.convex.site/resend-webhook`. Copiá el secreto de firma a Convex. [Webhooks de Resend](https://resend.com/docs/dashboard/webhooks/introduction).
+
+### Verificar entregas y reintentar
+
+Enviá una inscripción nueva a una actividad de prueba. Con el modo de prueba activo, usá `delivered@resend.dev` como email de la inscripción. Con el envío real habilitado, usá una dirección que controles. En **Ver inscripciones → Ver respuestas → Correo de inscripción**, el webhook actualiza el estado a **Entregado** cuando Resend confirma la entrega. En **Convex → Data → resend**, las tablas `emails` y `deliveryEvents` muestran el estado y los eventos del proveedor. La demostración local no envía correos.
+
+Un fallo de correo conserva la inscripción y el cupo. La cola reintenta fallos transitorios. El administrador puede elegir **Reintentar correo** cuando se conoce que el envío no se realizó. Los reintentos conservan el contenido original y enviar de nuevo el formulario para la misma actividad y email no genera otro correo. Las inscripciones anteriores al despliegue no se envían retroactivamente y la aprobación posterior no genera otro correo.
+
 ## Adjuntar documentos
 
 El formulario de inscripción permite adjuntar documentos **opcionales en todas las actividades**; no hay requisitos de documentación configurables por actividad. Se aceptan hasta **3 archivos PDF, JPEG o PNG**, de **5 MB por archivo**. Los límites, las extensiones, el tipo declarado y la firma del formato se validan en el servidor. Si falla el envío, el formulario conserva los datos y los archivos para volver a intentar. Un reintento con el mismo email conserva los documentos de la inscripción original.
