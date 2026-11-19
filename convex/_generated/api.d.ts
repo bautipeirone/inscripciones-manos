@@ -13,6 +13,8 @@ import type * as accounts from "../accounts.js";
 import type * as admin from "../admin.js";
 import type * as attachmentHttp from "../attachmentHttp.js";
 import type * as auth from "../auth.js";
+import type * as emailTemplate from "../emailTemplate.js";
+import type * as emails from "../emails.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as inventories from "../inventories.js";
@@ -32,6 +34,8 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   attachmentHttp: typeof attachmentHttp;
   auth: typeof auth;
+  emailTemplate: typeof emailTemplate;
+  emails: typeof emails;
   events: typeof events;
   http: typeof http;
   inventories: typeof inventories;
@@ -66,4 +70,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
+};

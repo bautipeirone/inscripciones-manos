@@ -17,6 +17,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 
 - Fechas y horas de inicio y finalización, actividades de varios días e indicaciones para participantes. Se guardan en Convex y se muestran en hora de Argentina.
 - Inscripción sin cuenta, con nombre, email, teléfono opcional y consentimiento.
+- [Correo de inscripción](docs/funcionalidades.md#enviar-correos-de-inscripción) para cada inscripción nueva, con estado de entrega y reintentos en el panel de administración.
 - Documentos opcionales en las inscripciones: hasta tres comprobantes PDF, JPEG o PNG de 5 MB cada uno, con descarga privada para administradores y eliminación junto con la inscripción.
 - Aprobación manual opcional por actividad: las nuevas solicitudes quedan pendientes y el administrador puede aceptarlas desde el detalle, filtrarlas por estado y exportar su estado a CSV.
 - Cuentas opcionales de participantes en `/account`: registro, ingreso y cierre de sesión desde el sitio público. La página tiene dos pestañas:
@@ -52,6 +53,6 @@ Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay 
 
 ## Documentación
 
-- [Funcionalidades](docs/funcionalidades.md): barrios, aprobación de inscripciones, documentos adjuntos, inventarios y la página Nosotros.
+- [Funcionalidades](docs/funcionalidades.md): barrios, aprobación de inscripciones, correos, documentos adjuntos, inventarios y la página Nosotros.
 - [CI/CD con GitHub Actions](docs/ci-cd.md): comprobaciones y despliegue automático.
 - [Estructura](docs/estructura.md): organización del código y recursos de marca.

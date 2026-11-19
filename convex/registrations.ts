@@ -20,6 +20,7 @@ import {
   validateRegistration,
 } from '../src/domain';
 import { validateAttachments } from '../src/attachments';
+import { queueConfirmation, removeConfirmation } from './emails';
 import { eventEdition } from '../src/zones';
 const inputValidator = v.object(registrationFields);
 type Submission = Infer<typeof inputValidator>;
@@ -76,7 +77,7 @@ async function record(
     return result;
   }
   const { website: _website, ...registration } = input;
-  await ctx.db.insert('registrations', {
+  const registrationId = await ctx.db.insert('registrations', {
     ...registration,
     ...details,
     status: event.requireApproval ? 'pending' : 'accepted',
@@ -87,6 +88,7 @@ async function record(
   await ctx.db.patch(event._id, {
     registrationCount: event.registrationCount + 1,
   });
+  await queueConfirmation(ctx, event, (await ctx.db.get(registrationId))!);
   return result;
 }
 export const submit = mutation({
@@ -254,6 +256,7 @@ export const remove = mutation({
     await requireAdmin(ctx);
     const registration = await ctx.db.get(id);
     if (!registration) return;
+    await removeConfirmation(ctx, id);
     for (const file of registration.attachments ?? [])
       await ctx.storage.delete(file.storageId);
     const event = await ctx.db.get(registration.eventId);

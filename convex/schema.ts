@@ -92,6 +92,21 @@ export default defineSchema({
   ...authTables,
   admins: defineTable({ userId: v.id('users') }).index('by_user', ['userId']),
   inventories: defineTable(inventoryFields).index('by_date', ['date']),
+  confirmationEmails: defineTable({
+    registrationId: v.id('registrations'),
+    to: v.string(),
+    subject: v.string(),
+    html: v.string(),
+    text: v.string(),
+    state: v.union(
+      v.literal('pending'),
+      v.literal('queued'),
+      v.literal('failed'),
+    ),
+    attempts: v.number(),
+    componentEmailId: v.optional(v.string()),
+    error: v.optional(v.string()),
+  }).index('by_registration', ['registrationId']),
   // A single document; absent until the team saves its own texts.
   about: defineTable(aboutFields),
   donors: defineTable(donorFields),
