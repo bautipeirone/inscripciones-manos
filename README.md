@@ -20,6 +20,10 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 - Correo de recepción o confirmación por inscripción, con envío duradero en Convex, reintentos automáticos y estado de entrega privado para administradores.
 - Documentos opcionales en las inscripciones: hasta tres comprobantes PDF, JPEG o PNG de 5 MB cada uno, con descarga privada para administradores y eliminación junto con la inscripción.
 - Aprobación manual opcional por actividad: las nuevas solicitudes quedan pendientes y el administrador puede aceptarlas desde el detalle, filtrarlas por estado y exportar su estado a CSV.
+- Cuentas opcionales de participantes en `/account`: registro, ingreso y cierre de sesión desde el sitio público. La página tiene dos pestañas:
+  - **Mis inscripciones**: inscripciones próximas y anteriores, con su estado de aprobación, los datos y respuestas enviados y los nombres de los documentos adjuntos.
+  - **Mis datos** (`/account#datos`): nombre, email de contacto y teléfono, que completan los formularios y se pueden cambiar antes de cada envío; carrera opcional y si ya se recibió o sigue estudiando; contacto de emergencia (nombre, vínculo y teléfono); y el barrio del ciclo actual con el historial de barrios por edición (ver [Barrios](docs/funcionalidades.md#barrios)).
+- En `/admin`, cada inscripción indica si se hizo con cuenta, cuántas otras inscripciones tiene la misma persona (por cuenta o por email) y su barrio para la edición de la actividad. El detalle muestra estudios, contacto de emergencia, esas otras actividades y los barrios por edición, y permite confirmar, asignar o cambiar el barrio. El CSV incluye todos esos datos.
 - Formularios con preguntas cortas, largas o de selección; campos obligatorios configurables.
 - Un registro por email normalizado y evento. Una persona puede participar en varios eventos. Los reintentos no reemplazan respuestas anteriores.
 - Visibilidad y recepción de inscripciones independientes. Los formularios ocultos no aparecen en las consultas públicas y rechazan nuevas inscripciones.
@@ -28,6 +32,7 @@ En una compilación de producción **no existe el acceso de prueba**. Sin Convex
 - Consulta y búsqueda de participantes, respuestas y exportación CSV protegida contra fórmulas de planillas.
 - Preguntas bloqueadas al recibir la primera inscripción para conservar el significado de las respuestas. El resto del evento se puede editar.
 - Pestaña privada **Inventarios**: registros por fecha y etiqueta, con nombre, cantidad (incluye decimales), unidad de medida y comentarios opcionales por elemento. Permite consultar, buscar, editar, exportar CSV, importar CSV o Excel y eliminar con confirmación.
+- Página pública **Nosotros** (`/nosotros`) con la presentación del proyecto y la sección **Donaciones** (`/nosotros#donaciones`), que lista por año a las personas y empresas que donaron. Los textos y los donantes se editan desde la pestaña **Nosotros** de `/admin` (ver [Nosotros y donaciones](docs/funcionalidades.md#nosotros-y-donaciones)).
 - Diseño adaptable, formularios etiquetados, ventanas con gestión del foco y cierre con Escape.
 
 Los eventos de ejemplo **no se cargan en Convex**. La base real comienza vacía para que el equipo publique sus fechas, lugares y formularios definitivos.
@@ -41,77 +46,6 @@ Las cuentas de participantes, la verificación por correo, las ediciones anuales
 Los nuevos formularios requieren horarios de inicio/finalización e indicaciones. Las actividades existentes sin esos campos siguen disponibles y muestran **Horario a confirmar**. Al editarlas, el equipo debe completar esos datos. No se asignan horarios ficticios a las actividades guardadas ni se borran inscripciones de la demo.
 
 Después de actualizar el código, ejecutá `npx convex dev` para desarrollo o `npx convex deploy` para producción antes de publicar el frontend, porque el esquema agrega `startAt`, `endAt` e `instructions` como campos opcionales para conservar registros anteriores.
-
-La función de inventarios agrega la tabla `inventories` y las operaciones privadas `inventories:listAdmin`, `inventories:save` e `inventories:remove`. Desplegá también estos cambios de backend antes de publicar el frontend. No requiere migrar actividades ni inscripciones existentes. La demo conserva sus datos anteriores y empieza con una lista de inventarios vacía.
-
-## Aprobar inscripciones
-
-Al crear o editar una actividad, activá **Requerir aprobación manual** para que las nuevas solicitudes queden pendientes. Tanto las pendientes como las aceptadas reservan cupo; aceptar una solicitud no consume un segundo lugar. Eliminar una inscripción libera su lugar. Cambiar la opción afecta solo a las nuevas solicitudes: las pendientes anteriores necesitan aceptación manual y las aceptadas conservan su estado. Las inscripciones anteriores a esta función se consideran aceptadas.
-
-En **Ver inscripciones**, usá **Estado de inscripción** para filtrar pendientes o aceptadas. Abrí el detalle de una pendiente y elegí **Aceptar inscripción**. La operación está protegida en el servidor y se puede repetir sin afectar el cupo. La confirmación pública explica cuándo se necesita aprobación y conserva el mensaje de que un reintento no reemplaza la inscripción original. Por privacidad, los reintentos informan la política actual de la actividad y no revelan el estado de una inscripción previa para ese email.
-
-Desplegá el backend antes del frontend. Los campos nuevos de configuración y estado son opcionales para conservar actividades e inscripciones existentes; no requieren migración.
-
-## Enviar correos de inscripción
-
-Cada inscripción nueva crea un correo dirigido al email registrado, también para participantes sin cuenta y envíos con documentos. Incluye la actividad, fecha y horario en Argentina, lugar, indicaciones, número de inscripción y respuestas. Si la actividad requiere aprobación manual, el asunto dice **Inscripción recibida** y el cuerpo aclara que está **pendiente de aprobación** y que la participación todavía no está confirmada. Las actividades sin horario conservan **Horario a confirmar**.
-
-El servicio usa el [componente oficial de Resend para Convex](https://github.com/get-convex/resend): la cola, ejecución, reintentos y webhook se alojan en el mismo backend de Convex. Solo necesitás una cuenta de Resend para la entrega de correo; no hay otro servidor, worker ni servicio propio para desplegar.
-
-### Configurar el envío
-
-1. Creá una cuenta en [Resend](https://resend.com), agregá un dominio que controles y verificá los registros DNS que indica el proveedor. El dominio gratuito `pages.dev` del frontend no sirve como dominio de envío propio. Referencia: [verificación de dominios](https://resend.com/docs/dashboard/domains/introduction).
-2. Creá una API key con permiso de envío para ese dominio. En **Settings → Environment Variables** del deployment de Convex, configurá:
-
-   | Variable                | Uso                                                                                                             |
-   | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-   | `RESEND_API_KEY`        | API key privada de Resend.                                                                                      |
-   | `EMAIL_FROM`            | Remitente de un dominio verificado, por ejemplo `Proyecto Manos a la Obra <inscripciones@tu-dominio.org>`.      |
-   | `EMAIL_REPLY_TO`        | Opcional: dirección del equipo que recibe las respuestas.                                                       |
-   | `EMAIL_TEST_MODE`       | `false` para enviar a participantes. Si falta o tiene otro valor, solo permite direcciones de prueba de Resend. |
-   | `RESEND_WEBHOOK_SECRET` | Secreto de firma del webhook; se configura en el paso 4.                                                        |
-
-   Estas variables pertenecen al **backend**. Nunca las agregues como `VITE_`, en el repositorio ni como variables públicas de Cloudflare Pages. Configurá desarrollo y producción por separado; usá direcciones `delivered@resend.dev`, `bounced@resend.dev`, etc. para las [pruebas del proveedor](https://resend.com/docs/dashboard/emails/send-test-emails).
-
-3. Desplegá el backend: `npx convex dev --once` para desarrollo o `npx convex deploy` para producción. Esto instala también el componente y sus colas. Publicá el frontend después.
-4. En Resend, creá un webhook para **todos los eventos `email.*`** apuntando a `https://<deployment>.convex.site/resend-webhook`. En este proyecto: `https://animated-lemming-207.convex.site/resend-webhook` en desarrollo y `https://oceanic-crab-449.convex.site/resend-webhook` en producción. Si usás otro deployment, reemplazá la URL. Copiá el secreto de firma a `RESEND_WEBHOOK_SECRET` en ese mismo deployment. Los eventos sin firma válida se rechazan. Referencia: [webhooks de Resend](https://resend.com/docs/dashboard/webhooks/introduction).
-5. Probá una inscripción nueva con una dirección que controles. En `/admin → Ver inscripciones → Ver respuestas`, **Correo de inscripción** debe pasar de la cola a **Enviado al proveedor** y luego a **Entregado**. El último estado requiere el webhook; enviado al proveedor no prueba la llegada a la bandeja de entrada.
-
-### Fallos, reintentos y duplicados
-
-La inscripción, el contenido original del correo y su programación se guardan en una misma transacción. El envío ocurre después: un error de configuración, de red o del proveedor conserva la inscripción y su cupo. Sin credenciales, el correo queda marcado como fallido y se puede reintentar después de configurar el servicio. Los envíos rechazados no crean correos. Un reintento del formulario con el mismo evento y email normalizado conserva la inscripción original y no programa otro correo.
-
-El componente reintenta fallos transitorios hasta cinco veces con espera creciente, usando la misma clave de idempotencia del proveedor. En el detalle privado, el administrador puede consultar el estado, el error y las solicitudes de envío realizadas, y elegir **Reintentar correo** cuando el fallo ocurrió antes de encolarlo o el proveedor confirmó que no se envió. Dos solicitudes de reintento simultáneas programan un solo trabajo. El botón no permite reenviar correos enviados, entregados, rebotados, denunciados como spam ni fallos cuyo resultado sea incierto después de agotar los reintentos de red; estos últimos requieren comprobar el envío en Resend antes de intervenir. El historial del componente está disponible en el dashboard de Convex, seleccionando **resend → emails / deliveryEvents**.
-
-Los reintentos conservan las fechas, lugar, respuestas y estado **al inscribirse**. Editar la actividad o aceptar una solicitud no crea otro correo; esta función confirma la recepción inicial y no agrega notificaciones de aprobación. Las inscripciones anteriores al despliegue no reciben correos retroactivos, ni siquiera por reintentar el formulario. Eliminar una inscripción borra su trabajo local y cancela el correo si sigue en cola; un envío que ya empezó no puede retirarse. Los registros del proveedor y del componente conservan su propio historial; su retención se administra por separado.
-
-La demostración local no envía correos. Las pruebas automatizadas ejecutan el componente y sus colas en `convex-test`, con respuestas del proveedor simuladas; no necesitan credenciales ni envían mensajes reales.
-
-## Adjuntar documentos
-
-El formulario de inscripción permite adjuntar documentos **opcionales en todas las actividades**; no hay requisitos de documentación configurables por actividad. Se aceptan hasta **3 archivos PDF, JPEG o PNG**, de **5 MB por archivo**. Los límites, las extensiones, el tipo declarado y la firma del formato se validan en el servidor. Si falla el envío, el formulario conserva los datos y los archivos para volver a intentar. Un reintento con el mismo email conserva los documentos de la inscripción original.
-
-En **Ver inscripciones**, abrí el detalle y elegí **Descargar** junto a un documento. Cada descarga verifica la sesión y el rol administrativo; no se publican enlaces de almacenamiento ni identificadores de archivos en las consultas. Eliminar una inscripción borra también sus archivos. Los envíos rechazados y los reintentos duplicados limpian los archivos nuevos que llegaron a almacenarse.
-
-Los archivos usan el almacenamiento de Convex. El frontend deriva la URL HTTP `https://<deployment>.convex.site` de `VITE_CONVEX_URL`; para un dominio o backend propio, configurá `VITE_CONVEX_SITE_URL` con la URL HTTP correspondiente. Las rutas `/inscriptions` y `/inscription-document` admiten CORS y descargas autenticadas mediante el token de la sesión. Desplegá el backend antes de publicar el frontend. Referencia: [archivos mediante acciones HTTP de Convex](https://docs.convex.dev/file-storage/serve-files).
-
-En la demo, los documentos se guardan en IndexedDB y sobreviven a una recarga del navegador; las actividades e inscripciones siguen en localStorage. Para reiniciar también los archivos de prueba, eliminá la base IndexedDB `manos-demo-documents`. Usá documentos ficticios.
-
-## Registrar inventarios
-
-En `/admin`, elegí **Inventarios → Nuevo inventario**. Completá la fecha y una etiqueta (por ejemplo, «Depósito antes de la jornada») y agregá los elementos relevados. Cada elemento requiere nombre y cantidad; la cantidad admite cero y decimales. La unidad es libre, con sugerencias como unidades, litros o kg. Los comentarios permiten anotar el estado, la ubicación o detalles del material.
-
-Cada inventario representa el relevamiento de una fecha; no calcula movimientos de stock entre registros. Podés guardar varias etiquetas en una misma fecha. La lista muestra primero los más recientes y permite buscar por etiqueta o fecha en formato `AAAA-MM-DD`. **Ver inventario** muestra sus elementos y ofrece **Exportar CSV**, que descarga fecha, etiqueta, nombre, cantidad, unidad y comentarios en un archivo `inventario-AAAA-MM-DD.csv`, con protección contra fórmulas de planillas. El botón de edición permite corregir los elementos, agregar o quitarlos. Eliminar requiere confirmación y borra el inventario completo. Solo los administradores pueden acceder a estas operaciones.
-
-Se admiten hasta 500 elementos por inventario, etiquetas y nombres de hasta 120 caracteres, unidades de hasta 40 y comentarios de hasta 2000. Las reglas se validan tanto en Convex como en la demo.
-
-### Importar un inventario
-
-Elegí **Inventarios → Importar inventario**. El menú incluye instrucciones y una tabla de ejemplo. Se admiten archivos CSV en UTF-8 separados por coma o punto y coma, y Excel `.xlsx` o `.xls` (primera hoja). La primera fila debe contener **Nombre** y **Cantidad**; **Unidad** y **Comentarios** son opcionales. Se reconoce cualquier orden de columnas, sin distinguir mayúsculas o tildes. Otras columnas se ignoran.
-
-Cada fila representa un elemento con nombre y cantidad mayor o igual a cero. Se aceptan decimales con punto o coma, sin separadores de miles. En un CSV separado por coma, los decimales con coma y los textos que incluyan comas o saltos de línea deben ir entre comillas dobles. En Excel se requieren valores, sin fórmulas, errores ni celdas combinadas. Los archivos pueden pesar hasta 5 MB; la tabla admite hasta 500 filas después del encabezado.
-
-Podés incluir **Fecha** y **Etiqueta**, repitiendo el mismo valor para todos los elementos, o completar esos datos en el menú. Las fechas se leen como `AAAA-MM-DD` o como celdas de fecha de Excel. El CSV generado por **Exportar CSV** se puede volver a importar. El archivo se procesa en el navegador y se valida completo antes de habilitar el guardado. Revisá la vista previa y presioná **Guardar inventario** para crear un registro nuevo; los inventarios anteriores se conservan. Si una fila es inválida, se muestra un error y no se guarda ningún elemento del archivo.
 
 ## Conectar Convex
 
@@ -235,12 +169,6 @@ El backend `animated-lemming-207` es también tu deployment personal de desarrol
 
 Backend y frontend se publican en pasos separados. Si falla Cloudflare después de publicar Convex, el backend nuevo ya está activo: corregí el problema y usá **Re-run failed jobs**. Mantené los cambios de API y esquema compatibles con el frontend anterior durante el despliegue. Un rollback de Pages solo revierte el frontend, no el esquema ni los datos de Convex.
 
-### Costos y límites
-
-Verificado el 26 de septiembre de 2026: [Convex ofrece un plan Free con recursos limitados](https://www.convex.dev/pricing); su plan **Starter es de pago por uso** por encima de los recursos incluidos. Elegí **Free** para un presupuesto sin cargos por excedentes. [Cloudflare Pages Free admite hasta 500 compilaciones por mes](https://developers.cloudflare.com/pages/platform/limits/).
-
-No se necesita dominio propio ni servicio de email. Los documentos adjuntos consumen almacenamiento de Convex. La capacidad gratuita depende del tráfico y del uso: controlá el consumo en Convex. No es una garantía de alojamiento gratis a cualquier escala; si se agota la cuota gratuita, puede limitarse el servicio. Referencia: [límites de Convex](https://docs.convex.dev/production/state/limits).
-
 ## Operación y límites del alcance
 
 - El email evita duplicados por evento, pero no prueba la identidad de una persona: alguien puede usar otro email. No hay verificación por correo ni correo de confirmación automático.
@@ -259,23 +187,13 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Las pruebas de backend usan `convex-test` y comprueban permisos, bloqueo del registro de cuentas, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales, unidades opcionales e importación de CSV y archivos Excel reales. Las pruebas del lector también cubren fechas, comillas, saltos de línea, límites y rechazo de archivos inválidos.
+Las pruebas de backend usan `convex-test` y comprueban permisos, cuentas de participantes sin acceso administrativo, aislamiento del historial y los perfiles, historial para administradores, datos de estudios y contacto de emergencia, ediciones, elección y confirmación de barrios, continuidad dentro del ciclo, años salteados, cambios de barrio, ediciones informadas, validación, duplicados, cupos, fechas, visibilidad, preservación de preguntas y el ciclo de creación, edición y eliminación de inventarios. Las pruebas de navegador cubren la demo en escritorio y celular: inscripción con y sin cuenta, datos precargados, historial personal, pestañas de la cuenta, datos personales, elección y confirmación de barrios, reintento, respuestas, CSV, creación de formularios, publicación, cierre, persistencia, filtros, navegación por teclado e inventarios con cantidades decimales, unidades opcionales e importación de CSV y archivos Excel reales. Las pruebas del lector también cubren fechas, comillas, saltos de línea, límites y rechazo de archivos inválidos.
 
 Las pruebas de navegador requieren el modo demo (sin `VITE_CONVEX_URL`). Si hay un backend configurado, ejecutá Vite con `VITE_CONVEX_URL='' npm run dev -- --port 5173` antes de la prueba.
 
-## Estructura
 
-- `src/App.tsx`: listado público y detalle de actividades.
-- `src/Layout.tsx`: encabezado, pie institucional y privacidad.
-- `src/RegistrationForm.tsx`: formulario de inscripción sin cuenta.
-- `src/Admin.tsx`: acceso privado, editor y consulta de participantes.
-- `src/Inventories.tsx`: lista, editor y detalle de inventarios en el panel administrativo.
-- `src/inventory.ts`: tipos y validación compartida de inventarios.
-- `src/InventoryImport.tsx`: menú de importación con instrucciones, selección de archivo y vista previa.
-- `src/inventoryImport.ts`: lectura y validación de CSV y Excel; el lector de Excel se carga al seleccionar ese formato.
-- `src/data.tsx`: conexión con Convex y demo local de desarrollo.
-- `src/domain.ts`: reglas compartidas y normalización.
-- `convex/`: esquema, permisos, autenticación y operaciones de base de datos.
-- `tests/`: pruebas del backend y de navegador.
+## Documentación
 
-El logo se copia sin modificaciones de `~/manos/public/logo.svg`. La paleta utiliza `#f8c514`, `#fef5cd`, `#c69e10` y `#5c4a08`. Las tipografías Open Sans, Roboto Condensed y Kalam se cargan desde Google Fonts con fuentes de sistema como alternativa.
+- [Funcionalidades](docs/funcionalidades.md): barrios, aprobación de inscripciones, documentos adjuntos, inventarios y la página Nosotros.
+- [CI/CD con GitHub Actions](docs/ci-cd.md): comprobaciones y despliegue automático.
+- [Estructura](docs/estructura.md): organización del código y recursos de marca.

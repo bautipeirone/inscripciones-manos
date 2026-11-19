@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as about from "../about.js";
 import type * as accounts from "../accounts.js";
 import type * as admin from "../admin.js";
 import type * as attachmentHttp from "../attachmentHttp.js";
@@ -17,7 +18,9 @@ import type * as emails from "../emails.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as inventories from "../inventories.js";
+import type * as participants from "../participants.js";
 import type * as registrations from "../registrations.js";
+import type * as zones from "../zones.js";
 
 import type {
   ApiFromModules,
@@ -26,6 +29,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  about: typeof about;
   accounts: typeof accounts;
   admin: typeof admin;
   attachmentHttp: typeof attachmentHttp;
@@ -35,7 +39,9 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   http: typeof http;
   inventories: typeof inventories;
+  participants: typeof participants;
   registrations: typeof registrations;
+  zones: typeof zones;
 }>;
 
 /**

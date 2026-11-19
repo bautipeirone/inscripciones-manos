@@ -22,11 +22,46 @@ import {
   type InventoryInput,
 } from './inventory';
 import {
+  defaultAbout,
+  planDonorBatch,
+  prepareAbout,
+  prepareDonor,
+  type AboutContent,
+  type Donor,
+  type DonorBatchResult,
+  type DonorInput,
+  type DonorKind,
+} from './about';
+import {
+  assignTarget,
+  assignmentAt,
+  cycleFor,
+  editionOf,
+  eventEdition,
+  requestTarget,
+  validatePastEdition,
+  zoneOverview,
+  type PastEdition,
+  type Zone,
+  type ZoneAssignment,
+  type ZoneCycle,
+  type ZoneOverview,
+} from './zones';
+import {
+  eventSummary,
   normalizeEmail,
+  normalizeProfileDetails,
   validateEvent,
+  validatePassword,
+  validateProfile,
+  validateProfileDetails,
   validateRegistration,
+  type Account,
   type Event,
   type EventInput,
+  type HistoryEntry,
+  type PersonInfo,
+  type ProfileDetails,
   type Registration,
   type RegistrationInput,
   type RegistrationResult,
@@ -37,8 +72,25 @@ type Data = {
   loading: boolean;
   events: Event[];
   admin: { name: string; email: string } | null;
+  // The signed-in participant; admins also have one in the live app.
+  account: Account | null;
+  // The account's own inscriptions; undefined while loading.
+  history: HistoryEntry[] | undefined;
   signIn: (email: string, password: string) => Promise<void>;
+  participantSignIn: (email: string, password: string) => Promise<void>;
+  participantSignUp: (input: {
+    name: string;
+    email: string;
+    password: string;
+  }) => Promise<void>;
   signOut: () => Promise<void>;
+  saveProfile: (profile: ProfileDetails) => Promise<void>;
+  // The participant's barrio for the current cycle and their history.
+  zone: ZoneOverview | null | undefined;
+  requestZone: (zoneId: string) => Promise<void>;
+  withdrawZoneRequest: () => Promise<void>;
+  addPastEdition: (input: { edition: number; zone: string }) => Promise<void>;
+  removePastEdition: (id: string) => Promise<void>;
   saveEvent: (event: EventInput, id?: string) => Promise<void>;
   availability: (
     event: Event,
@@ -46,7 +98,7 @@ type Data = {
     accepting: boolean,
   ) => Promise<void>;
   register: (
-    input: RegistrationInput,
+    input: RegistrationInput & { saveProfile?: boolean },
     files?: File[],
   ) => Promise<RegistrationResult>;
   downloadAttachment: (
@@ -54,11 +106,28 @@ type Data = {
     index: number,
   ) => Promise<void>;
   registrations: (eventId: string) => Promise<Registration[]>;
+  person: (registrationId: string) => Promise<PersonInfo | null>;
+  assignZone: (input: {
+    userId: string;
+    zoneId: string;
+    edition: number;
+  }) => Promise<void>;
   removeRegistration: (id: string) => Promise<void>;
   acceptRegistration: (id: string) => Promise<void>;
   inventories: Inventory[] | undefined;
   saveInventory: (inventory: InventoryInput, id?: string) => Promise<void>;
   removeInventory: (id: string) => Promise<void>;
+  // The public «Nosotros» page; undefined while loading.
+  about: AboutContent | undefined;
+  donors: Donor[] | undefined;
+  saveAbout: (content: AboutContent) => Promise<void>;
+  saveDonor: (donor: DonorInput, id?: string) => Promise<void>;
+  addDonors: (input: {
+    names: string[];
+    kind: DonorKind;
+    year: number;
+  }) => Promise<DonorBatchResult>;
+  removeDonor: (id: string) => Promise<void>;
 };
 const Context = createContext<Data | null>(null);
 export function useData() {
@@ -69,19 +138,44 @@ export function useData() {
 export function LiveData({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const viewer = useQuery(api.admin.viewer, isAuthenticated ? {} : 'skip');
+  const account = useQuery(
+    api.participants.viewer,
+    isAuthenticated ? {} : 'skip',
+  );
+  const history = useQuery(
+    api.participants.history,
+    isAuthenticated ? {} : 'skip',
+  );
+  const zone = useQuery(api.zones.mine, isAuthenticated ? {} : 'skip');
   const publicEvents = useQuery(api.events.listPublic);
   const adminEvents = useQuery(api.events.listAdmin, viewer ? {} : 'skip');
   const inventories = useQuery(api.inventories.listAdmin, viewer ? {} : 'skip');
+  const about = useQuery(api.about.get);
+  const donors = useQuery(api.about.listDonors);
+  const saveAbout = useMutation(api.about.save);
+  const saveDonor = useMutation(api.about.saveDonor);
+  const addDonors = useMutation(api.about.addDonors);
+  const removeDonor = useMutation(api.about.removeDonor);
   const auth = useAuthActions();
   const token = useAuthToken();
   const save = useMutation(api.events.save);
   const update = useMutation(api.events.setAvailability);
   const submit = useMutation(api.registrations.submit);
+  const saveProfile = useMutation(api.participants.saveProfile);
+  const requestZone = useMutation(api.zones.request);
+  const withdrawZoneRequest = useMutation(api.zones.withdraw);
+  const addPastEdition = useMutation(api.zones.addPastEdition);
+  const removePastEdition = useMutation(api.zones.removePastEdition);
+  const assignZone = useMutation(api.zones.assign);
   const remove = useMutation(api.registrations.remove);
   const accept = useMutation(api.registrations.accept);
   const saveInventory = useMutation(api.inventories.save);
   const removeInventory = useMutation(api.inventories.remove);
   const convex = useConvex();
+  // Admins and participants share the password provider; roles live in Convex.
+  const signIn = async (email: string, password: string) => {
+    await auth.signIn('password', { email, password, flow: 'signIn' });
+  };
   return (
     <Context.Provider
       value={{
@@ -89,9 +183,11 @@ export function LiveData({ children }: { children: ReactNode }) {
         loading:
           isLoading ||
           publicEvents === undefined ||
-          (isAuthenticated && viewer === undefined),
+          (isAuthenticated && (viewer === undefined || account === undefined)),
         events: adminEvents ?? publicEvents ?? [],
         admin: viewer ?? null,
+        account: account ?? null,
+        history: isAuthenticated ? history : [],
         inventories,
         saveInventory: async (inventory, id) => {
           await saveInventory({
@@ -102,26 +198,66 @@ export function LiveData({ children }: { children: ReactNode }) {
         removeInventory: async (id) => {
           await removeInventory({ id: id as Id<'inventories'> });
         },
-        signIn: async (email, password) => {
-          await auth.signIn('password', { email, password, flow: 'signIn' });
+        about: about === undefined ? undefined : (about ?? defaultAbout),
+        donors,
+        saveAbout: async (content) => {
+          await saveAbout({ content });
+        },
+        saveDonor: async (donor, id) => {
+          await saveDonor({ donor, ...(id ? { id: id as Id<'donors'> } : {}) });
+        },
+        addDonors: async (input) => await addDonors(input),
+        removeDonor: async (id) => {
+          await removeDonor({ id: id as Id<'donors'> });
+        },
+        signIn,
+        participantSignIn: signIn,
+        participantSignUp: async ({ name, email, password }) => {
+          await auth.signIn('password', {
+            name,
+            email,
+            password,
+            flow: 'signUp',
+          });
         },
         signOut: auth.signOut,
+        saveProfile: async (profile) => {
+          await saveProfile(profile);
+        },
+        zone: isAuthenticated ? zone : null,
+        requestZone: async (zoneId) => {
+          await requestZone({ zoneId: zoneId as Id<'zones'> });
+        },
+        withdrawZoneRequest: async () => {
+          await withdrawZoneRequest({});
+        },
+        addPastEdition: async (input) => {
+          await addPastEdition(input);
+        },
+        removePastEdition: async (id) => {
+          await removePastEdition({ id: id as Id<'pastEditions'> });
+        },
         saveEvent: async (event, id) => {
           await save({ event, ...(id ? { id: id as Id<'events'> } : {}) });
         },
         availability: async (event, visible, accepting) => {
           await update({ id: event._id as Id<'events'>, visible, accepting });
         },
-        register: async (input, files = []) => {
+        register: async ({ saveProfile, ...input }, files = []) => {
           if (files.length) {
             const form = new FormData();
             form.set('registration', JSON.stringify(input));
+            if (saveProfile) form.set('saveProfile', 'true');
             for (const file of files) form.append('attachments', file);
             let response: Response;
             try {
+              // The session links the inscription to the signed-in account.
               response = await fetch(httpUrl('/inscriptions'), {
                 method: 'POST',
                 body: form,
+                ...(token
+                  ? { headers: { Authorization: `Bearer ${token}` } }
+                  : {}),
               });
             } catch {
               throw new Error(
@@ -143,6 +279,7 @@ export function LiveData({ children }: { children: ReactNode }) {
           return await submit({
             ...input,
             eventId: input.eventId as Id<'events'>,
+            saveProfile,
           });
         },
         downloadAttachment: async (registration, index) => {
@@ -184,6 +321,17 @@ export function LiveData({ children }: { children: ReactNode }) {
             cursor = result.continueCursor;
           }
           return rows;
+        },
+        person: async (registrationId) =>
+          await convex.query(api.registrations.person, {
+            id: registrationId as Id<'registrations'>,
+          }),
+        assignZone: async ({ userId, zoneId, edition }) => {
+          await assignZone({
+            userId: userId as Id<'users'>,
+            zoneId: zoneId as Id<'zones'>,
+            edition,
+          });
         },
       }}
     >
@@ -259,11 +407,64 @@ function seedEvents(): Event[] {
     },
   ];
 }
+// Demo cycles start in 2022, so an edition in 2027 falls in 2025–2027.
+function seedZones(): Pick<DemoState, 'zoneCycles' | 'zones'> {
+  const edition = editionOf(Date.now());
+  const startYear = 2022 + 3 * Math.floor((edition - 2022) / 3);
+  const cycle = {
+    _id: `cycle-${startYear}`,
+    startYear,
+    endYear: startYear + 2,
+  };
+  return {
+    zoneCycles: [cycle],
+    zones: ['Norte', 'Oeste', 'Sur'].map((name) => ({
+      _id: `${cycle._id}-${name.toLowerCase()}`,
+      cycleId: cycle._id,
+      name: `Barrio ${name}`,
+    })),
+  };
+}
+// Invented names, so the demo shows how the donors wall reads.
+function seedDonors(): Donor[] {
+  const year = new Date().getFullYear();
+  const rows: [string, DonorKind, number[], string?][] = [
+    ['Ferretería El Galpón', 'organization', [year, year - 1], 'Herramientas'],
+    ['Pinturería Del Litoral', 'organization', [year, year - 1, year - 2]],
+    ['Corralón Los Hermanos', 'organization', [year], 'Arena y cemento'],
+    ['Panadería La Espiga', 'organization', [year - 1, year - 2]],
+    ['Lucía Ferreyra', 'person', [year, year - 1]],
+    ['Martín Acosta', 'person', [year]],
+    ['Familia Bianchi', 'person', [year, year - 2]],
+    ['Carolina Sosa', 'person', [year]],
+    ['Julián Peralta', 'person', [year - 1]],
+    ['Mariana Godoy', 'person', [year - 1, year - 2]],
+    ['Tomás Villalba', 'person', [year - 2]],
+  ];
+  return rows.map(([name, kind, years, note], index) => ({
+    _id: `demo-donor-${index}`,
+    name,
+    kind,
+    years,
+    ...(note ? { note } : {}),
+  }));
+}
 const STORAGE = 'manos-demo-v1';
+type DemoRegistration = Omit<Registration, 'otherRegistrations'>;
+type DemoAccount = Account & { _id: string };
 type DemoState = {
   events: Event[];
-  registrations: Registration[];
+  registrations: DemoRegistration[];
   inventories: Inventory[];
+  accounts: DemoAccount[];
+  // The signed-in participant account, kept across page loads.
+  session: string | null;
+  zoneCycles: ZoneCycle[];
+  zones: Zone[];
+  zoneAssignments: (ZoneAssignment & { userId: string })[];
+  pastEditions: (PastEdition & { userId: string })[];
+  about: AboutContent | null;
+  donors: Donor[];
 };
 function readDemo(): DemoState {
   try {
@@ -274,13 +475,44 @@ function readDemo(): DemoState {
         return {
           ...data,
           inventories: Array.isArray(data.inventories) ? data.inventories : [],
+          accounts: Array.isArray(data.accounts) ? data.accounts : [],
+          session: typeof data.session === 'string' ? data.session : null,
+          ...(Array.isArray(data.zoneCycles) && Array.isArray(data.zones)
+            ? { zoneCycles: data.zoneCycles, zones: data.zones }
+            : seedZones()),
+          zoneAssignments: Array.isArray(data.zoneAssignments)
+            ? data.zoneAssignments
+            : [],
+          pastEditions: Array.isArray(data.pastEditions)
+            ? data.pastEditions
+            : [],
+          about: Array.isArray(data.about?.sections) ? data.about : null,
+          donors: Array.isArray(data.donors) ? data.donors : seedDonors(),
         };
     }
   } catch {
     /* Storage can be unavailable in private browsers. */
   }
-  return { events: seedEvents(), registrations: [], inventories: [] };
+  return {
+    events: seedEvents(),
+    registrations: [],
+    inventories: [],
+    accounts: [],
+    session: null,
+    ...seedZones(),
+    zoneAssignments: [],
+    pastEditions: [],
+    about: null,
+    donors: seedDonors(),
+  };
 }
+// Mirrors the backend: the same account or, as a hint, the same email.
+const othersFrom = (rows: DemoRegistration[], row: DemoRegistration) =>
+  rows.filter(
+    (r) =>
+      r._id !== row._id &&
+      (r.email === row.email || (!!row.userId && r.userId === row.userId)),
+  );
 // Used only in development. This is never authentication.
 export function DemoData({ children }: { children: ReactNode }) {
   const [data, setData] = useState(readDemo);
@@ -292,12 +524,56 @@ export function DemoData({ children }: { children: ReactNode }) {
       /* The in-memory demo remains usable. */
     }
   }, [data]);
+  const account = data.accounts.find((a) => a._id === data.session) ?? null;
+  const findEvent = (id: string) => data.events.find((e) => e._id === id);
+  const inscribedEditions = (userId: string) =>
+    data.registrations.flatMap((r) => {
+      const activity = r.userId === userId && findEvent(r.eventId);
+      return activity ? [eventEdition(activity)] : [];
+    });
+  const overview = (userId: string, edition: number) =>
+    zoneOverview({
+      edition,
+      cycles: data.zoneCycles,
+      zones: data.zones,
+      assignments: data.zoneAssignments.filter((a) => a.userId === userId),
+      pastEditions: data.pastEditions.filter((p) => p.userId === userId),
+      inscribedEditions: inscribedEditions(userId),
+    });
+  const zoneWithCycle = (zoneId: string) => {
+    const zone = data.zones.find((z) => z._id === zoneId);
+    const cycle = data.zoneCycles.find((c) => c._id === zone?.cycleId);
+    if (!zone || !cycle) throw new Error('No encontramos el barrio.');
+    return { zone, cycle };
+  };
   return (
     <Context.Provider
       value={{
         demo: true,
         loading: false,
         admin,
+        account,
+        history: account
+          ? data.registrations.flatMap((r) => {
+              const activity = findEvent(r.eventId);
+              if (r.userId !== account._id || !activity) return [];
+              return [
+                {
+                  _id: r._id,
+                  _creationTime: r._creationTime,
+                  event: eventSummary(activity),
+                  status: r.status ?? 'accepted',
+                  name: r.name,
+                  email: r.email,
+                  phone: r.phone,
+                  answers: activity.questions
+                    .filter((q) => r.answers[q.id])
+                    .map((q) => ({ label: q.label, value: r.answers[q.id] })),
+                  attachments: r.attachments ?? [],
+                },
+              ];
+            })
+          : [],
         events: data.events,
         inventories: admin ? data.inventories : undefined,
         saveInventory: async (inventory, id) => {
@@ -321,11 +597,183 @@ export function DemoData({ children }: { children: ReactNode }) {
             inventories: old.inventories.filter((item) => item._id !== id),
           }));
         },
+        about: data.about ?? defaultAbout,
+        donors: data.donors,
+        saveAbout: async (content) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          const about = prepareAbout(content);
+          setData((old) => ({ ...old, about }));
+        },
+        saveDonor: async (donor, id) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          if (id && !data.donors.some((item) => item._id === id))
+            throw new Error('No encontramos al donante.');
+          const value = prepareDonor(donor);
+          setData((old) => ({
+            ...old,
+            donors: id
+              ? old.donors.map((item) =>
+                  item._id === id ? { ...value, _id: id } : item,
+                )
+              : [...old.donors, { ...value, _id: crypto.randomUUID() }],
+          }));
+        },
+        addDonors: async (input) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          const plan = planDonorBatch(data.donors, input);
+          const years = new Map(plan.updates.map((u) => [u._id, u.years]));
+          setData((old) => ({
+            ...old,
+            donors: [
+              ...old.donors.map((item) =>
+                years.has(item._id)
+                  ? { ...item, years: years.get(item._id)! }
+                  : item,
+              ),
+              ...plan.inserts.map((item) => ({
+                ...item,
+                _id: crypto.randomUUID(),
+              })),
+            ],
+          }));
+          return {
+            added: plan.inserts.length,
+            updated: plan.updates.length,
+            unchanged: plan.unchanged,
+          };
+        },
+        removeDonor: async (id) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          setData((old) => ({
+            ...old,
+            donors: old.donors.filter((item) => item._id !== id),
+          }));
+        },
         signIn: async () => {
           setAdmin({ name: 'Equipo Manos', email: 'demo@manos.local' });
         },
+        participantSignIn: async (email) => {
+          const found = data.accounts.find(
+            (a) => a.accountEmail === normalizeEmail(email),
+          );
+          if (!found) throw new Error('Invalid credentials');
+          setData((old) => ({ ...old, session: found._id }));
+        },
+        participantSignUp: async ({ name, email, password }) => {
+          const accountEmail = normalizeEmail(email);
+          validateProfile({ name, email: accountEmail, phone: '' });
+          validatePassword(password);
+          if (data.accounts.some((a) => a.accountEmail === accountEmail))
+            throw new Error('Account already exists');
+          const created = {
+            _id: crypto.randomUUID(),
+            accountEmail,
+            name: name.trim(),
+            email: accountEmail,
+            phone: '',
+          };
+          setData((old) => ({
+            ...old,
+            accounts: [...old.accounts, created],
+            session: created._id,
+          }));
+        },
         signOut: async () => {
           setAdmin(null);
+          setData((old) => ({ ...old, session: null }));
+        },
+        saveProfile: async (input) => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          const profile = normalizeProfileDetails(input);
+          validateProfileDetails(profile);
+          setData((old) => ({
+            ...old,
+            accounts: old.accounts.map((a) =>
+              a._id === account._id
+                ? {
+                    _id: a._id,
+                    accountEmail: a.accountEmail,
+                    ...profile,
+                  }
+                : a,
+            ),
+          }));
+        },
+        zone: account ? overview(account._id, editionOf(Date.now())) : null,
+        requestZone: async (zoneId) => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          const { cycle } = zoneWithCycle(zoneId);
+          const edition = editionOf(Date.now());
+          if (edition < cycle.startYear || cycle.endYear < edition)
+            throw new Error('Ese barrio no corresponde al ciclo actual.');
+          const own = data.zoneAssignments.filter(
+            (a) => a.userId === account._id,
+          );
+          const pending = requestTarget(own, cycle._id);
+          setData((old) => ({
+            ...old,
+            zoneAssignments: pending
+              ? old.zoneAssignments.map((a) =>
+                  a._id === pending._id ? { ...a, zoneId } : a,
+                )
+              : [
+                  ...old.zoneAssignments,
+                  {
+                    _id: crypto.randomUUID(),
+                    userId: account._id,
+                    cycleId: cycle._id,
+                    zoneId,
+                    fromEdition: edition,
+                    status: 'requested',
+                  },
+                ],
+          }));
+        },
+        withdrawZoneRequest: async () => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          const cycle = cycleFor(data.zoneCycles, editionOf(Date.now()));
+          if (!cycle) return;
+          const pending = requestTarget(
+            data.zoneAssignments.filter((a) => a.userId === account._id),
+            cycle._id,
+          );
+          if (!pending) return;
+          setData((old) => ({
+            ...old,
+            zoneAssignments: old.zoneAssignments.filter(
+              (a) => a._id !== pending._id,
+            ),
+          }));
+        },
+        addPastEdition: async (input) => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          validatePastEdition(input, editionOf(Date.now()), [
+            ...data.pastEditions
+              .filter((p) => p.userId === account._id)
+              .map((p) => p.edition),
+            ...inscribedEditions(account._id),
+          ]);
+          setData((old) => ({
+            ...old,
+            pastEditions: [
+              ...old.pastEditions,
+              {
+                _id: crypto.randomUUID(),
+                userId: account._id,
+                edition: input.edition,
+                zone: input.zone.trim(),
+              },
+            ],
+          }));
+        },
+        removePastEdition: async (id) => {
+          if (!account) throw new Error('Ingresá a tu cuenta.');
+          setData((old) => ({
+            ...old,
+            pastEditions: old.pastEditions.filter(
+              (p) => p._id !== id || p.userId !== account._id,
+            ),
+          }));
         },
         saveEvent: async (event, id) => {
           if (!admin) throw new Error('Ingresá a la administración.');
@@ -359,11 +807,15 @@ export function DemoData({ children }: { children: ReactNode }) {
             ),
           }));
         },
-        register: async (input, files = []) => {
-          const event = data.events.find((e) => e._id === input.eventId);
+        register: async ({ saveProfile, ...input }, files = []) => {
+          const event = findEvent(input.eventId);
           if (!event) throw new Error('No encontramos el evento.');
           validateRegistration(event, input);
-          const email = normalizeEmail(input.email);
+          const details = {
+            name: input.name.trim(),
+            email: normalizeEmail(input.email),
+            phone: input.phone.trim(),
+          };
           const attachments = files.map((file) => ({
             name: file.name,
             contentType: file.type,
@@ -375,23 +827,31 @@ export function DemoData({ children }: { children: ReactNode }) {
             received: true,
             approvalRequired: event.requireApproval === true,
           };
-          if (
-            data.registrations.some(
-              (r) => r.eventId === input.eventId && r.email === email,
-            )
-          )
+          const duplicate = (rows: DemoRegistration[]) =>
+            rows.some(
+              (r) =>
+                r.eventId === input.eventId &&
+                (r.email === details.email ||
+                  (!!account && r.userId === account._id)),
+            );
+          const keepProfile = (accounts: DemoAccount[]) =>
+            account && saveProfile
+              ? accounts.map((a) =>
+                  a._id === account._id ? { ...a, ...details } : a,
+                )
+              : accounts;
+          if (duplicate(data.registrations)) {
+            setData((old) => ({ ...old, accounts: keepProfile(old.accounts) }));
             return result;
+          }
           const id = crypto.randomUUID();
           if (files.length) await saveDemoDocuments(id, files);
           setData((old) => {
-            if (
-              old.registrations.some(
-                (r) => r.eventId === input.eventId && r.email === email,
-              )
-            )
-              return old;
+            const accounts = keepProfile(old.accounts);
+            if (duplicate(old.registrations)) return { ...old, accounts };
             return {
               ...old,
+              accounts,
               events: old.events.map((e) =>
                 e._id === input.eventId
                   ? { ...e, registrationCount: e.registrationCount + 1 }
@@ -401,26 +861,113 @@ export function DemoData({ children }: { children: ReactNode }) {
                 ...old.registrations,
                 {
                   ...input,
-                  email,
-                  name: input.name.trim(),
+                  ...details,
                   _id: id,
                   attachments,
                   _creationTime: Date.now(),
                   status: event.requireApproval ? 'pending' : 'accepted',
+                  ...(account ? { userId: account._id } : {}),
                 },
               ],
             };
           });
-          return {
-            received: true,
-            approvalRequired: event.requireApproval === true,
-          };
+          return result;
         },
         registrations: async (eventId) => {
           if (!admin) throw new Error('Acceso no autorizado.');
+          const activity = findEvent(eventId);
+          const edition = activity ? eventEdition(activity) : 0;
+          const cycle = cycleFor(data.zoneCycles, edition);
+          const summary = (userId: string) => {
+            const owner = data.accounts.find((a) => a._id === userId);
+            const assignment =
+              cycle &&
+              assignmentAt(
+                data.zoneAssignments.filter((a) => a.userId === userId),
+                cycle._id,
+                edition,
+              );
+            const zone = data.zones.find((z) => z._id === assignment?.zoneId);
+            return {
+              career: owner?.career,
+              graduated: owner?.graduated,
+              emergencyContact: owner?.emergencyContact,
+              zone:
+                assignment && zone
+                  ? { name: zone.name, status: assignment.status }
+                  : null,
+            };
+          };
           return data.registrations
             .filter((r) => r.eventId === eventId)
-            .reverse();
+            .reverse()
+            .map((r) => ({
+              ...r,
+              otherRegistrations: othersFrom(data.registrations, r).length,
+              account: r.userId ? summary(r.userId) : null,
+            }));
+        },
+        assignZone: async ({ userId, zoneId, edition }) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          const { cycle } = zoneWithCycle(zoneId);
+          if (edition < cycle.startYear || cycle.endYear < edition)
+            throw new Error('Ese barrio no corresponde a esta edición.');
+          const existing = assignTarget(
+            data.zoneAssignments.filter((a) => a.userId === userId),
+            cycle._id,
+            edition,
+          );
+          setData((old) => ({
+            ...old,
+            zoneAssignments: existing
+              ? old.zoneAssignments.map((a) =>
+                  a._id === existing._id
+                    ? { ...a, zoneId, status: 'confirmed' }
+                    : a,
+                )
+              : [
+                  ...old.zoneAssignments,
+                  {
+                    _id: crypto.randomUUID(),
+                    userId,
+                    cycleId: cycle._id,
+                    zoneId,
+                    fromEdition: edition,
+                    status: 'confirmed',
+                  },
+                ],
+          }));
+        },
+        person: async (registrationId) => {
+          if (!admin) throw new Error('Acceso no autorizado.');
+          const row = data.registrations.find((r) => r._id === registrationId);
+          if (!row) return null;
+          const activity = findEvent(row.eventId);
+          const inscriptions = othersFrom(data.registrations, row)
+            .flatMap((r) => {
+              const activity = findEvent(r.eventId);
+              if (!activity) return [];
+              return [
+                {
+                  _id: r._id,
+                  _creationTime: r._creationTime,
+                  event: eventSummary(activity),
+                  status: r.status ?? ('accepted' as const),
+                  match:
+                    row.userId && r.userId === row.userId
+                      ? ('account' as const)
+                      : ('email' as const),
+                },
+              ];
+            })
+            .sort((a, b) => b.event.date.localeCompare(a.event.date));
+          return {
+            inscriptions,
+            zone:
+              row.userId && activity
+                ? overview(row.userId, eventEdition(activity))
+                : null,
+          };
         },
         acceptRegistration: async (id) => {
           if (!admin) throw new Error('Acceso no autorizado.');
